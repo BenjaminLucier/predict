@@ -1,0 +1,13 @@
+[package]
+name = "predict"
+version = "0.0.1"
+edition = "2024"
+authors = ["Benjamin Lucier <benjaminlucier@gmail.com>"]
+description = "Machine learning for Rust with a consistent, scikit-learn-style API (work in progress)."
+readme = "README.md"
+license = "MIT OR Apache-2.0"
+keywords = ["machine-learning", "ml", "sklearn", "statistics", "prediction"]
+categories = ["science", "algorithms"]
+# TODO: add `repository = "https://github.com/<you>/predict"` once the repo exists.
+
+[dependencies]
