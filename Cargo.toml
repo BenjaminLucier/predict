@@ -8,6 +8,7 @@ readme = "README.md"
 license = "MIT OR Apache-2.0"
 keywords = ["machine-learning", "ml", "sklearn", "statistics", "prediction"]
 categories = ["science", "algorithms"]
-# TODO: add `repository = "https://github.com/<you>/predict"` once the repo exists.
+homepage = "https://predict.rs"
+repository = "https://github.com/benjaminlucier/predict"
 
 [dependencies]
