@@ -57,14 +57,20 @@ at the root.
   on ndarray's `NdFloat`, plus `Into<f64>`), default `f64`, as the first type
   parameter. `ndarray` is the public array type; `faer` stays internal.
 - **Dataset** (`src/dataset.rs`, book: `data.md`). `Dataset<'a, F = f64, S =
-  Unchecked>` wraps a `CowArray`: `new` takes `impl Into<CowArray>`, so `&x` or
-  a view borrows and `x` moves in, never copying; transformers return owned
-  data. `S` is a sealed `State`: `Unchecked`, `NoInfinity` (NaN allowed),
-  `Finite`. `validate_no_infinity` /
+  Unchecked, Y = NoTargets>` wraps a `CowArray`: `new` takes `impl
+  Into<CowArray>`, so `&x` or a view borrows and `x` moves in, never copying;
+  transformers return owned data. `S` is a sealed `State`: `Unchecked`,
+  `NoInfinity` (NaN allowed), `Finite`. `validate_no_infinity` /
   `validate_finite` scan once and move up; states never move down, and only the
-  private `with_state` assembles a dataset in a given state. `InfinityFree`
+  private `from_parts` assembles a dataset in a given state. `InfinityFree`
   bounds inputs that accept NaN but not infinity; `S::WithoutInfinity` is the
   output state of a transformer that checks what it writes for infinity.
+- **Targets** (`src/dataset/targets.rs`, book: `data.md`). `Y` is a sealed
+  `TargetState`: `NoTargets` or `Targets<'a, T, D = Ix1>`. `T: Target` is sealed:
+  `f32` / `f64` (must be finite) and `usize` (class indices). `D: TargetDim` is
+  `Ix1` or `Ix2` (rows × outputs). `with_y` checks rows, then outputs, then
+  values, once; `S` describes only the features. Features and targets share one
+  lifetime (`with_y` shortens to the shorter borrow).
 
 - **Errors** (`src/error.rs`, book: `errors.md`). One public enum,
   `PredictError` (`thiserror`, `#[non_exhaustive]`), and the alias `Result<T>`,

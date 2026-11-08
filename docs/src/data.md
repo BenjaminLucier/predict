@@ -53,6 +53,37 @@ twice doesn't compile. Inside the crate, only these checks and transformers that
 check what they write can produce a stronger state; the `State` trait is sealed,
 so no other code can claim one.
 
+## Targets
+
+Supervised estimators also need targets `y`: what to predict for each row.
+`with_y` attaches them, without copying, and checks them on the way in:
+
+```rust
+{{#rustdoc_include ../../examples/data.rs:targets}}
+```
+
+The element type says what kind of problem it is:
+
+| Targets | Element type | Checked |
+|---|---|---|
+| Regression | `f32` or `f64` | every value finite |
+| Classification | `usize`, a class index from `0` to `n_classes - 1` | nothing more: a `usize` can't be NaN |
+
+Classes are indices, not names: encode class names as indices before attaching
+them.
+
+`y` is 1-D for one target per row, or 2-D (rows × outputs) for several. Several
+outputs cover multi-output regression (predicting temperature *and* humidity),
+multi-label classification (each row tagged yes / no for several labels), and
+several class outputs per row. Either way `y` needs one row per sample, and a
+2-D `y` at least one output; `with_y` returns `ShapeMismatch` or `EmptyInput`
+otherwise.
+
+Targets are checked once, when they are attached, so the dataset's state
+describes only the features: features with missing values (`NoInfinity`) can
+carry targets, and those targets are still finite. The `validate_*` methods
+keep the targets as they are.
+
 ## Borrowed or owned
 
 `Dataset::new` never copies. How you pass the array decides who owns it:
@@ -66,6 +97,11 @@ Validation moves the same array, borrowed or owned, into the new state.
 Transformers return owned datasets. Both are the same type: `Dataset<'a, ..>`
 borrows for the lifetime `'a`, and an owned dataset borrows nothing, so it can be
 `Dataset<'static, ..>` and be returned from the function that made it.
+
+`with_y` works the same way: `&y` or `y.view()` borrows the targets and `y`
+moves them in. Features and targets share one lifetime, the shorter of their
+borrows: owned features with borrowed targets live as long as the targets'
+borrow, and owned features with owned targets can be `'static`.
 
 ## Float type
 

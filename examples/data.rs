@@ -1,7 +1,8 @@
-//! The feature states of a `Dataset`. Run with `cargo run --example data`.
+//! The feature states and targets of a `Dataset`. Run with
+//! `cargo run --example data`.
 
 use ndarray::array;
-use predict::dataset::{Finite, NoInfinity};
+use predict::dataset::Finite;
 use predict::{Dataset, PredictError, Result};
 
 fn main() -> Result<()> {
@@ -23,7 +24,7 @@ fn main() -> Result<()> {
     // ANCHOR: missing
     // NaN marks a missing value. `validate_no_infinity` allows it...
     let with_missing = array![[1.0, f64::NAN], [3.0, 4.0]];
-    let data: Dataset<'_, _, NoInfinity> = Dataset::new(&with_missing).validate_no_infinity()?;
+    let data = Dataset::new(&with_missing).validate_no_infinity()?;
 
     // ...but `validate_finite` reports where it is.
     match data.validate_finite() {
@@ -34,6 +35,28 @@ fn main() -> Result<()> {
         Ok(_) => unreachable!("the data has a NaN"),
     }
     // ANCHOR_END: missing
+
+    // ANCHOR: targets
+    let x = array![[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]];
+
+    // Regression: one float per row, which must be finite.
+    let prices = array![10.5, 12.0, 9.75];
+    let data = Dataset::new(&x).validate_finite()?.with_y(&prices)?;
+
+    // Classification: one class index per row, 0 to n_classes - 1.
+    let classes = array![0_usize, 2, 1];
+    let labelled = Dataset::new(&x).with_y(&classes)?;
+
+    // Several outputs: rows × outputs, here two floats per row.
+    let both = array![[20.0, 0.5], [21.0, 0.6], [19.5, 0.4]];
+    let multi = Dataset::new(&x).with_y(&both)?;
+    // ANCHOR_END: targets
+    println!(
+        "targets: {} prices, {} classes, {:?} outputs",
+        data.y().len(),
+        labelled.y().len(),
+        multi.y().dim()
+    );
 
     Ok(())
 }

@@ -78,3 +78,15 @@ pub(crate) fn reject_first<F: Float>(
         })
         .into_inner()
 }
+
+/// `ShapeMismatch` unless a length or column count is the expected one.
+pub(crate) fn check_len(context: &'static str, expected: usize, actual: usize) -> Result<()> {
+    if actual == expected {
+        return Ok(());
+    }
+    Err(PredictError::ShapeMismatch {
+        context,
+        expected,
+        actual,
+    })
+}
