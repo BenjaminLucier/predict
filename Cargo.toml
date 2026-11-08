@@ -12,3 +12,4 @@ homepage = "https://predict.rs"
 repository = "https://github.com/benjaminlucier/predict"
 
 [dependencies]
+thiserror = "2"

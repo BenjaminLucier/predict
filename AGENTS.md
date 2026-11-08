@@ -43,11 +43,19 @@ written it from scratch. Speed of producing code is not the goal.
   approval covers that one commit, not the next.
 - Never force-push `main` or rewrite pushed history. If CI breaks, fix forward.
 - Message: imperative subject under 72 characters, prefixed with the area
-  (`core: add Dataset`), and a body saying what and why.
+  (`dataset: add Dataset`), and a body saying what and why.
 
 ## Architecture
 
-Grows as modules land; see the book's Architecture page.
+Grows as modules land; the book's Architecture pages have the detail.
+
+- **Errors** (`src/error.rs`, book: `errors.md`). One public enum,
+  `PredictError` (`thiserror`, `#[non_exhaustive]`), and the alias `Result<T>`,
+  both re-exported at the crate root from a private `error` module. No `Clone` /
+  `PartialEq`; tests use `matches!`. A variant is added in the commit that first
+  raises it. `context` names an input (`"y"`), a transformer (`"StandardScaler"`)
+  or a method (`"validate_finite"`). Settings are checked in `fit`, never in
+  `with_*`.
 
 ## Conventions
 

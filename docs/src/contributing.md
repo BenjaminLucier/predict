@@ -28,4 +28,4 @@ mdbook build docs
 Each commit is one idea, compiles and passes the checks on its own, and updates
 the book whenever it changes behaviour, naming or architecture. Subjects are
 imperative, under 72 characters, and prefixed with the area they touch, for
-example `core: add Dataset`.
+example `dataset: add Dataset`.
