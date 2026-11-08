@@ -9,7 +9,7 @@ fn main() -> Result<()> {
     let x = array![[1.0, 2.0], [3.0, 4.0]];
 
     // Borrow the array: nothing is known about the values yet.
-    let data = Dataset::new(x.view());
+    let data = Dataset::new(&x);
 
     // One scan; the type now records that every value is finite.
     let data: Dataset<'_, _, Finite> = data.validate_finite()?;
@@ -23,8 +23,7 @@ fn main() -> Result<()> {
     // ANCHOR: missing
     // NaN marks a missing value. `validate_no_infinity` allows it...
     let with_missing = array![[1.0, f64::NAN], [3.0, 4.0]];
-    let data: Dataset<'_, _, NoInfinity> =
-        Dataset::new(with_missing.view()).validate_no_infinity()?;
+    let data: Dataset<'_, _, NoInfinity> = Dataset::new(&with_missing).validate_no_infinity()?;
 
     // ...but `validate_finite` reports where it is.
     match data.validate_finite() {

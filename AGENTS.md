@@ -57,9 +57,10 @@ at the root.
   on ndarray's `NdFloat`, plus `Into<f64>`), default `f64`, as the first type
   parameter. `ndarray` is the public array type; `faer` stays internal.
 - **Dataset** (`src/dataset.rs`, book: `data.md`). `Dataset<'a, F = f64, S =
-  Unchecked>` wraps a `CowArray` (borrowed zero-copy by `new`, owned by
-  `from_owned` and transformers). `S` is a sealed `State`: `Unchecked`,
-  `NoInfinity` (NaN allowed), `Finite`. `validate_no_infinity` /
+  Unchecked>` wraps a `CowArray`: `new` takes `impl Into<CowArray>`, so `&x` or
+  a view borrows and `x` moves in, never copying; transformers return owned
+  data. `S` is a sealed `State`: `Unchecked`, `NoInfinity` (NaN allowed),
+  `Finite`. `validate_no_infinity` /
   `validate_finite` scan once and move up; states never move down, and only the
   private `with_state` assembles a dataset in a given state. `InfinityFree`
   bounds inputs that accept NaN but not infinity; `S::WithoutInfinity` is the

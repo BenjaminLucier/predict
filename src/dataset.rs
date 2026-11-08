@@ -4,7 +4,7 @@ mod state;
 
 use std::marker::PhantomData;
 
-use ndarray::{Array2, ArrayView2, CowArray, Ix2};
+use ndarray::{ArrayView2, CowArray, Ix2};
 
 pub use state::{Finite, InfinityFree, NoInfinity, State, Unchecked};
 
@@ -18,10 +18,10 @@ use crate::{Float, Result};
 /// - `S` is [`Unchecked`] when the dataset is created; the `validate_*` methods
 ///   check the values once and move it to [`NoInfinity`] or [`Finite`].
 ///
-/// A `Dataset` either borrows the caller's array without copying it
-/// ([`new`](Dataset::new)) or owns its array ([`from_owned`](Dataset::from_owned),
-/// and what transformers return). Both are the same type: `'a` is the lifetime of
-/// the borrow, and an owned dataset is `Dataset<'static, ..>`.
+/// A `Dataset` either borrows the caller's array or owns it, decided by how the
+/// array is passed to [`new`](Dataset::new); neither copies. Transformers return
+/// owned datasets. Both are the same type: `'a` is the lifetime of the borrow, and
+/// an owned dataset can be `Dataset<'static, ..>`.
 ///
 /// States only move up. A `Finite` dataset has no `validate_finite`, so checking
 /// twice doesn't compile:
@@ -31,7 +31,7 @@ use crate::{Float, Result};
 /// use predict::Dataset;
 ///
 /// let x = array![[1.0, 2.0]];
-/// let data = Dataset::new(x.view()).validate_finite().unwrap();
+/// let data = Dataset::new(&x).validate_finite().unwrap();
 /// let again = data.validate_finite(); // error: no method on `Dataset<_, _, Finite>`
 /// ```
 #[derive(Debug, Clone)]
@@ -41,13 +41,12 @@ pub struct Dataset<'a, F: Float = f64, S: State = Unchecked> {
 }
 
 impl<'a, F: Float> Dataset<'a, F, Unchecked> {
-    /// Borrow the caller's array, without copying it.
-    pub fn new(x: ArrayView2<'a, F>) -> Self {
-        Dataset::with_state(x.into())
-    }
-
-    /// Take ownership of an array.
-    pub fn from_owned(x: Array2<F>) -> Dataset<'static, F, Unchecked> {
+    /// Wrap a feature matrix, without copying it.
+    ///
+    /// Pass `&x` or `x.view()` to borrow the array, or `x` to move it in. A moved-in
+    /// array is owned by the dataset, which then doesn't borrow anything, so it can
+    /// be returned from a function as `Dataset<'static, ..>`.
+    pub fn new(x: impl Into<CowArray<'a, F, Ix2>>) -> Self {
         Dataset::with_state(x.into())
     }
 }

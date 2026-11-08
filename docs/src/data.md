@@ -17,7 +17,7 @@ state:
 
 | State | Guarantees | Reached by |
 |---|---|---|
-| `Unchecked` | nothing | `Dataset::new`, `Dataset::from_owned` |
+| `Unchecked` | nothing | `Dataset::new` |
 | `NoInfinity` | no ±infinity; NaN, meaning a missing value, is allowed | `validate_no_infinity` |
 | `Finite` | no NaN and no ±infinity | `validate_finite` |
 
@@ -27,7 +27,7 @@ returns a `NonFinite` error. There is no path back down:
 ```mermaid
 stateDiagram-v2
     direction LR
-    [*] --> Unchecked: new / from_owned
+    [*] --> Unchecked: new
     Unchecked --> NoInfinity: validate_no_infinity
     Unchecked --> Finite: validate_finite
     NoInfinity --> Finite: validate_finite
@@ -55,10 +55,17 @@ so no other code can claim one.
 
 ## Borrowed or owned
 
-`Dataset::new` borrows your array without copying it, and validation moves the
-same borrow into the new state. `Dataset::from_owned` takes ownership instead,
-which is also what transformers return. Both are the same type: `Dataset<'a, ..>`
-borrows for the lifetime `'a`, and an owned dataset is `Dataset<'static, ..>`.
+`Dataset::new` never copies. How you pass the array decides who owns it:
+
+| Call | The dataset | Your array afterwards |
+|---|---|---|
+| `Dataset::new(&x)` or `Dataset::new(x.view())` | borrows it | still yours, unchanged |
+| `Dataset::new(x)` | owns it | moved in: using `x` again is a compile error |
+
+Validation moves the same array, borrowed or owned, into the new state.
+Transformers return owned datasets. Both are the same type: `Dataset<'a, ..>`
+borrows for the lifetime `'a`, and an owned dataset borrows nothing, so it can be
+`Dataset<'static, ..>` and be returned from the function that made it.
 
 ## Float type
 
