@@ -5,6 +5,10 @@
 //! **This crate is a work in progress.** This early release reserves the
 //! crate name; the real API is under development and will change soon.
 
+pub mod dataset;
 mod error;
+mod float;
 
+pub use dataset::Dataset;
 pub use error::{PredictError, Result};
+pub use float::Float;

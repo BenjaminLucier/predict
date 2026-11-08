@@ -2,6 +2,10 @@
 
 [Introduction](README.md)
 
+# User guide
+
+- [Data](data.md)
+
 # Architecture
 
 - [Errors](errors.md)

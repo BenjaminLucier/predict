@@ -47,7 +47,23 @@ written it from scratch. Speed of producing code is not the goal.
 
 ## Architecture
 
-Grows as modules land; the book's Architecture pages have the detail.
+Grows as modules land; the book's Architecture pages have the detail. The crate
+is flat: no `core` module (it would shadow Rust's built-in `core` crate at the
+root); foundation modules sit at the top level with everyday items re-exported
+at the root.
+
+- **Float type** (`src/float.rs`). Everything holding feature values or
+  regression targets is generic over `F: Float` (sealed; `f32` and `f64`, built
+  on ndarray's `NdFloat`, plus `Into<f64>`), default `f64`, as the first type
+  parameter. `ndarray` is the public array type; `faer` stays internal.
+- **Dataset** (`src/dataset.rs`, book: `data.md`). `Dataset<'a, F = f64, S =
+  Unchecked>` wraps a `CowArray` (borrowed zero-copy by `new`, owned by
+  `from_owned` and transformers). `S` is a sealed `State`: `Unchecked`,
+  `NoInfinity` (NaN allowed), `Finite`. `validate_no_infinity` /
+  `validate_finite` scan once and move up; states never move down, and only the
+  private `with_state` assembles a dataset in a given state. `InfinityFree`
+  bounds inputs that accept NaN but not infinity; `S::WithoutInfinity` is the
+  output state of a transformer that checks what it writes for infinity.
 
 - **Errors** (`src/error.rs`, book: `errors.md`). One public enum,
   `PredictError` (`thiserror`, `#[non_exhaustive]`), and the alias `Result<T>`,
@@ -73,6 +89,9 @@ Grows as modules land; the book's Architecture pages have the detail.
 - Docs and code change together: a change to behaviour, naming or architecture
   updates the book in the same commit.
 - The book describes what's in the repository, not plans.
+- `predict` in backticks reads as the method, so in prose call the library
+  "this crate" (or "predict" in a heading or title), and write "the `predict`
+  method" when you mean the method.
 - Code shown in the book lives in `examples/` and is pulled in with
   `{{#include}}`, so `cargo check --all-targets` compiles it.
 - Links: book pages use relative links; book to API docs uses

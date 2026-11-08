@@ -12,4 +12,5 @@ homepage = "https://predict.rs"
 repository = "https://github.com/benjaminlucier/predict"
 
 [dependencies]
+ndarray = "0.17.2"
 thiserror = "2"

@@ -3,10 +3,10 @@
 ## Setup
 
 You need a stable Rust toolchain (edition 2024) and, for this book,
-[mdBook](https://rust-lang.github.io/mdBook/):
+[mdBook](https://rust-lang.github.io/mdBook/) and its Mermaid plugin for diagrams:
 
 ```bash
-cargo install mdbook
+cargo install mdbook mdbook-mermaid
 ```
 
 ## Checks
