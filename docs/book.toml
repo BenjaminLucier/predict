@@ -1,0 +1,13 @@
+[book]
+title = "predict"
+authors = ["Benjamin Lucier"]
+description = "Machine learning for Rust with a consistent, scikit-learn-style API."
+language = "en"
+src = "src"
+
+[output.html]
+site-url = "/"
+git-repository-url = "https://github.com/benjaminlucier/predict"
+
+[output.html.search]
+enable = true
