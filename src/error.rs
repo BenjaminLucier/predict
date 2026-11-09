@@ -65,7 +65,8 @@ pub enum PredictError {
 }
 
 /// `NonFinite` for the first value in memory order that `is_rejected` picks out,
-/// or `Ok` if there is none.
+/// or `Ok` if there is none. Its column is reported counted from `col_offset`,
+/// for an array that is one block of a dataset's columns (`0` otherwise).
 ///
 /// The scan follows the array's memory layout, so it reads memory sequentially
 /// for row-major and column-major arrays alike, and stops at the first hit. With
@@ -76,6 +77,7 @@ pub enum PredictError {
 pub(crate) fn reject_first<F: Float>(
     context: &'static str,
     x: ArrayView2<'_, F>,
+    col_offset: usize,
     is_rejected: impl Fn(F) -> bool,
 ) -> Result<()> {
     Zip::indexed(x)
@@ -84,7 +86,7 @@ pub(crate) fn reject_first<F: Float>(
                 FoldWhile::Done(Err(PredictError::NonFinite {
                     context,
                     row,
-                    col,
+                    col: col_offset + col,
                     value: value.into(),
                 }))
             } else {

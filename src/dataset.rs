@@ -1,17 +1,20 @@
 //! Feature data tagged with what is known about its values, with optional
 //! targets and sample weights checked when they are attached.
 
+mod block;
 mod state;
 mod targets;
 
 use std::marker::PhantomData;
 
-use ndarray::{ArrayBase, ArrayView, ArrayView1, ArrayView2, CowArray, CowRepr, Ix1, Ix2};
+use ndarray::{ArrayBase, ArrayView, ArrayView1, ArrayView2, Axis, CowArray, CowRepr, Ix1, Ix2};
 
 pub use state::{Finite, InfinityFree, NoInfinity, State, Unchecked};
 pub use targets::{NoTargets, Target, TargetDim, TargetState, Targets};
 
-use crate::error::{check_len, reject_first};
+use block::Block;
+
+use crate::error::check_len;
 use crate::{Float, PredictError, Result};
 
 /// Exactly `CowArray<'a, A, D>`, spelled out, for struct fields.
@@ -62,7 +65,10 @@ pub(crate) type CovariantCowArray<'a, A, D> = ArrayBase<CowRepr<'a, A>, D, A>;
 /// ```
 #[derive(Debug, Clone)]
 pub struct Dataset<'a, F: Float = f64, S: State = Unchecked, Y: TargetState = NoTargets> {
-    x: CovariantCowArray<'a, F, Ix2>,
+    // The features, as blocks of columns side by side, each with `n_samples`
+    // rows. Never empty: `new` makes one block, even for a matrix with no
+    // columns, so the row count is always the first block's.
+    blocks: Vec<Block<'a, F>>,
     targets: Y,
     // `None` means every row weighs 1, without storing a column of ones.
     sample_weights: Option<CovariantCowArray<'a, F, Ix1>>,
@@ -76,7 +82,7 @@ impl<'a, F: Float> Dataset<'a, F, Unchecked, NoTargets> {
     /// array is owned by the dataset, which then doesn't borrow anything, so it can
     /// be returned from a function as `Dataset<'static, ..>`.
     pub fn new(x: impl Into<CowArray<'a, F, Ix2>>) -> Self {
-        Dataset::from_parts(x.into(), NoTargets, None)
+        Dataset::from_parts(vec![Block::Dense(x.into())], NoTargets, None)
     }
 }
 
@@ -127,7 +133,7 @@ impl<'a, F: Float, S: State> Dataset<'a, F, S, NoTargets> {
         }
         targets::check(y_matrix)?;
         Ok(Dataset::from_parts(
-            self.x,
+            self.blocks,
             Targets { y },
             self.sample_weights,
         ))
@@ -143,11 +149,9 @@ impl<'a, F: Float, Y: TargetState> Dataset<'a, F, Unchecked, Y> {
     /// `NonFinite` with `context = "validate_no_infinity"`, at the first infinity in
     /// memory order.
     pub fn validate_no_infinity(self) -> Result<Dataset<'a, F, NoInfinity, Y>> {
-        reject_first("validate_no_infinity", self.view(), |value| {
-            value.is_infinite()
-        })?;
+        self.reject_first("validate_no_infinity", |value| value.is_infinite())?;
         Ok(Dataset::from_parts(
-            self.x,
+            self.blocks,
             self.targets,
             self.sample_weights,
         ))
@@ -181,44 +185,72 @@ impl<'a, F: Float, S: State, Y: TargetState> Dataset<'a, F, S, Y> {
     // The shared body of the two public `validate_finite`s. They exist only on the
     // states that can still move up, so calling it on `Finite` data doesn't compile.
     fn into_finite(self) -> Result<Dataset<'a, F, Finite, Y>> {
-        reject_first("validate_finite", self.view(), |value| !value.is_finite())?;
+        self.reject_first("validate_finite", |value| !value.is_finite())?;
         Ok(Dataset::from_parts(
-            self.x,
+            self.blocks,
             self.targets,
             self.sample_weights,
         ))
     }
 
+    // `NonFinite` at the first value `is_rejected` picks out: blocks in column
+    // order, then memory order within a block, with the column counted across
+    // the whole dataset.
+    fn reject_first(&self, context: &'static str, is_rejected: impl Fn(F) -> bool) -> Result<()> {
+        let mut col_offset = 0;
+        for block in &self.blocks {
+            block.reject_first(context, col_offset, &is_rejected)?;
+            col_offset += block.ncols();
+        }
+        Ok(())
+    }
+
     /// The one place a `Dataset` is assembled. `S` comes from the caller's return
     /// type, so this can produce any state without checking anything. It is
-    /// private because the caller is responsible for `S` being true of `x`, `Y` of
-    /// `targets`, and `sample_weights` having been checked.
+    /// private because the caller is responsible for `S` being true of `blocks`,
+    /// `Y` of `targets`, `sample_weights` having been checked, and every block
+    /// having the same number of rows.
     fn from_parts(
-        x: CovariantCowArray<'a, F, Ix2>,
+        blocks: Vec<Block<'a, F>>,
         targets: Y,
         sample_weights: Option<CovariantCowArray<'a, F, Ix1>>,
     ) -> Self {
         Dataset {
-            x,
+            blocks,
             targets,
             sample_weights,
             state: PhantomData,
         }
     }
 
-    /// The feature matrix, borrowed.
-    pub fn view(&self) -> ArrayView2<'_, F> {
-        self.x.view()
+    /// The features as one dense matrix: borrowed when they are stored as a
+    /// single dense block, as a dataset made with [`new`](Dataset::new) is, and
+    /// assembled into an owned matrix otherwise.
+    pub fn to_dense(&self) -> CowArray<'_, F, Ix2> {
+        match self.blocks.as_slice() {
+            [Block::Dense(x)] => x.view().into(),
+            blocks => {
+                let views: Vec<ArrayView2<'_, F>> = blocks
+                    .iter()
+                    .map(|block| match block {
+                        Block::Dense(x) => x.view(),
+                    })
+                    .collect();
+                ndarray::concatenate(Axis(1), &views)
+                    .expect("every block has n_samples rows")
+                    .into()
+            }
+        }
     }
 
     /// The number of rows.
     pub fn n_samples(&self) -> usize {
-        self.x.nrows()
+        self.blocks[0].nrows()
     }
 
-    /// The number of columns.
+    /// The number of columns, across all blocks.
     pub fn n_features(&self) -> usize {
-        self.x.ncols()
+        self.blocks.iter().map(Block::ncols).sum()
     }
 
     /// The weight of each row, borrowed, or `None` when every row weighs 1.
@@ -254,7 +286,11 @@ impl<'a, F: Float, S: State, Y: TargetState> Dataset<'a, F, S, Y> {
     ///   a NaN or infinite weight, or `InvalidValue` for a negative one.
     pub fn with_sample_weights(self, weights: impl Into<CowArray<'a, F, Ix1>>) -> Result<Self> {
         let weights = checked_weights(self.n_samples(), weights.into())?;
-        Ok(Dataset::from_parts(self.x, self.targets, Some(weights)))
+        Ok(Dataset::from_parts(
+            self.blocks,
+            self.targets,
+            Some(weights),
+        ))
     }
 }
 
@@ -291,5 +327,49 @@ impl<'a, F: Float, S: State, T: Target, D: TargetDim> Dataset<'a, F, S, Targets<
     /// The checked targets, borrowed: 1-D, or rows × outputs.
     pub fn y(&self) -> ArrayView<'_, T, D> {
         self.targets.y.view()
+    }
+}
+
+// Only `new` creates a dataset so far, and it makes one block. These build
+// several blocks directly, to check what depends on the column layout.
+#[cfg(test)]
+mod tests {
+    use ndarray::array;
+
+    use super::*;
+
+    fn side_by_side<'a>(blocks: &[&'a ndarray::Array2<f64>]) -> Dataset<'a> {
+        let blocks = blocks.iter().map(|x| Block::Dense(x.view().into()));
+        Dataset::from_parts(blocks.collect(), NoTargets, None)
+    }
+
+    #[test]
+    fn several_blocks_read_as_one_matrix() {
+        let (a, b) = (array![[1.0], [2.0]], array![[3.0, 4.0], [5.0, 6.0]]);
+        let data = side_by_side(&[&a, &b]);
+        assert_eq!((data.n_samples(), data.n_features()), (2, 3));
+
+        let dense = data.to_dense();
+        assert!(dense.is_owned());
+        assert_eq!(dense, array![[1.0, 3.0, 4.0], [2.0, 5.0, 6.0]]);
+    }
+
+    #[test]
+    fn a_bad_value_is_reported_at_its_column_in_the_dataset() {
+        // The NaN is in column 1 of the second block, so column 2 of the dataset.
+        let (a, b) = (array![[1.0], [2.0]], array![[3.0, 4.0], [5.0, f64::NAN]]);
+        let err = side_by_side(&[&a, &b]).validate_finite().unwrap_err();
+        assert!(matches!(
+            err,
+            PredictError::NonFinite { row: 1, col: 2, .. }
+        ));
+
+        // Blocks are scanned in column order: the first block's bad value wins.
+        let a = array![[f64::INFINITY], [2.0]];
+        let err = side_by_side(&[&a, &b]).validate_finite().unwrap_err();
+        assert!(matches!(
+            err,
+            PredictError::NonFinite { row: 0, col: 0, .. }
+        ));
     }
 }

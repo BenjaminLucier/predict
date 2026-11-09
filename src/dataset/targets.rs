@@ -49,13 +49,13 @@ pub trait Target: sealed::CheckTarget + Copy + Send + Sync + 'static {}
 
 impl sealed::CheckTarget for f32 {
     fn check(y: ArrayView2<'_, f32>) -> Result<()> {
-        reject_first("y", y, |value| !value.is_finite())
+        reject_first("y", y, 0, |value| !value.is_finite())
     }
 }
 
 impl sealed::CheckTarget for f64 {
     fn check(y: ArrayView2<'_, f64>) -> Result<()> {
-        reject_first("y", y, |value| !value.is_finite())
+        reject_first("y", y, 0, |value| !value.is_finite())
     }
 }
 

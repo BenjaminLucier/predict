@@ -139,6 +139,16 @@ borrows and `y` moves in. Features, targets and weights share one lifetime, the 
 borrows: a long-lived dataset shortens to the targets' borrow, as a reference
 would, and owned features with owned targets can be `'static`.
 
+## Storage
+
+Inside, a dataset stores its features as blocks of adjacent columns placed side
+by side, each with one row per sample. `Dataset::new` makes a single block:
+your array, borrowed or owned. The storage is private, so it can hold other
+kinds of block without changing how a dataset is used.
+
+`to_dense()` returns the features as one matrix. For a single dense block, as
+`new` makes, it borrows that block, without copying.
+
 ## Float type
 
 A dataset holds `f64` by default, or `f32`: the type is inferred from the array.

@@ -7,16 +7,16 @@ fn new_borrows_a_reference_or_a_view_without_copying() {
 
     // Same memory: the dataset reads the caller's array in place.
     let data = Dataset::new(&x);
-    assert_eq!(data.view().as_ptr(), x.as_ptr());
+    assert_eq!(data.to_dense().as_ptr(), x.as_ptr());
     assert_eq!((data.n_samples(), data.n_features()), (3, 2));
 
     // So does an explicit view.
     let viewed = Dataset::new(x.view());
-    assert_eq!(viewed.view().as_ptr(), x.as_ptr());
+    assert_eq!(viewed.to_dense().as_ptr(), x.as_ptr());
 
     // A view of part of the array works the same way.
     let first_two = Dataset::new(x.slice(ndarray::s![..2, ..]));
-    assert_eq!(first_two.view().as_ptr(), x.as_ptr());
+    assert_eq!(first_two.to_dense().as_ptr(), x.as_ptr());
     assert_eq!(first_two.n_samples(), 2);
 }
 
@@ -25,7 +25,16 @@ fn new_takes_ownership_without_copying() {
     let x = Array2::<f64>::zeros((4, 3));
     let ptr = x.as_ptr();
     let data = Dataset::new(x);
-    assert_eq!(data.view().as_ptr(), ptr);
+    assert_eq!(data.to_dense().as_ptr(), ptr);
+}
+
+#[test]
+fn to_dense_borrows_the_features_of_a_new_dataset() {
+    // `new` stores one dense block, so `to_dense` hands it out without copying,
+    // whether the dataset borrows the array or owns it.
+    let x = array![[1.0, 2.0], [3.0, 4.0]];
+    assert!(Dataset::new(&x).to_dense().is_view());
+    assert!(Dataset::new(x).to_dense().is_view());
 }
 
 #[test]
@@ -42,8 +51,8 @@ fn an_owned_dataset_outlives_the_function_that_made_it() {
 fn the_float_type_is_inferred_from_the_array() {
     let x = array![[1.0_f32, 2.0]];
     let data = Dataset::new(&x);
-    let view: ndarray::ArrayView2<'_, f32> = data.view();
-    assert_eq!(view[[0, 1]], 2.0);
+    let dense: ndarray::CowArray<'_, f32, ndarray::Ix2> = data.to_dense();
+    assert_eq!(dense[[0, 1]], 2.0);
 }
 
 #[test]
@@ -95,7 +104,7 @@ fn with_several_bad_values_the_first_in_memory_is_reported() {
 fn validation_moves_the_data_without_copying() {
     let x = array![[1.0, 2.0]];
     let finite = Dataset::new(&x).validate_finite().unwrap();
-    assert_eq!(finite.view().as_ptr(), x.as_ptr());
+    assert_eq!(finite.to_dense().as_ptr(), x.as_ptr());
 }
 
 #[test]

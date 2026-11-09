@@ -57,9 +57,13 @@ at the root.
   on ndarray's `NdFloat`, plus `Into<f64>`), default `f64`, as the first type
   parameter. `ndarray` is the public array type; `faer` stays internal.
 - **Dataset** (`src/dataset.rs`, book: `data.md`). `Dataset<'a, F = f64, S =
-  Unchecked, Y = NoTargets>` wraps a `CowArray`: `new` takes `impl
-  Into<CowArray>`, so `&x` or a view borrows and `x` moves in, never copying;
-  transformers return owned data. `S` is a sealed `State`: `Unchecked`,
+  Unchecked, Y = NoTargets>` stores the features as column blocks side by side
+  (private `Block` in `src/dataset/block.rs`; dense `CowArray` only so far),
+  never empty, each with `n_samples` rows. `new` takes `impl Into<CowArray>`,
+  so `&x` or a view borrows and `x` moves in, never copying, as one block;
+  transformers return owned data. Storage stays private: estimators read
+  `to_dense()`, which borrows a single dense block and assembles otherwise.
+  Validation errors give the column across the whole dataset. `S` is a sealed `State`: `Unchecked`,
   `NoInfinity` (NaN allowed), `Finite`. `validate_no_infinity` /
   `validate_finite` scan once and move up; states never move down, and only the
   private `from_parts` assembles a dataset in a given state. `InfinityFree`
@@ -101,6 +105,9 @@ at the root.
 - Acronyms keep their capitals in type names (`KMeans`, `DBSCAN`).
 - Public enums that may grow are `#[non_exhaustive]`.
 - Don't add comments that restate code; comment intent and trade-offs.
+- Tests go in `tests/` and use only the public API. A `#[cfg(test)] mod tests`
+  in a source file is only for behaviour the public API can't reach yet; move
+  it to `tests/` once it can.
 
 ## Documentation
 
