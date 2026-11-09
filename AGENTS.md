@@ -70,7 +70,10 @@ at the root.
   `f32` / `f64` (must be finite) and `usize` (class indices). `D: TargetDim` is
   `Ix1` or `Ix2` (rows × outputs). `with_y` checks rows, then outputs, then
   values, once; `S` describes only the features. Features and targets share one
-  lifetime (`with_y` shortens to the shorter borrow).
+  lifetime. Fields use `CovariantCowArray` (`CowArray` with its element type
+  spelled out), so `Dataset` and `Targets` are covariant over `'a` despite
+  ndarray 0.17's projection default; `datasets_shorten_like_references` guards
+  it.
 
 - **Errors** (`src/error.rs`, book: `errors.md`). One public enum,
   `PredictError` (`thiserror`, `#[non_exhaustive]`), and the alias `Result<T>`,

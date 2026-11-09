@@ -100,8 +100,8 @@ borrows for the lifetime `'a`, and an owned dataset borrows nothing, so it can b
 
 `with_y` works the same way: `&y` or `y.view()` borrows the targets and `y`
 moves them in. Features and targets share one lifetime, the shorter of their
-borrows: owned features with borrowed targets live as long as the targets'
-borrow, and owned features with owned targets can be `'static`.
+borrows: a long-lived dataset shortens to the targets' borrow, as a reference
+would, and owned features with owned targets can be `'static`.
 
 ## Float type
 

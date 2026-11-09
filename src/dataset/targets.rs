@@ -1,6 +1,8 @@
 //! Targets `y` attached to a dataset, checked when they are attached.
 
-use ndarray::{ArrayView, ArrayView2, Axis, CowArray, Dimension, Ix1, Ix2};
+use ndarray::{ArrayView, ArrayView2, Axis, Dimension, Ix1, Ix2};
+
+use super::CovariantCowArray;
 
 use crate::Result;
 use crate::error::reject_first;
@@ -115,7 +117,7 @@ pub struct NoTargets;
 /// The field is private, so checked targets can only come from `with_y`.
 #[derive(Debug, Clone)]
 pub struct Targets<'a, T, D: Dimension = Ix1> {
-    pub(super) y: CowArray<'a, T, D>,
+    pub(super) y: CovariantCowArray<'a, T, D>,
 }
 
 impl sealed::Sealed for NoTargets {}

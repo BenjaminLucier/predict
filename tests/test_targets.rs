@@ -58,11 +58,39 @@ fn a_column_of_a_table_can_be_the_targets() {
 
 #[test]
 fn owned_features_take_borrowed_targets() {
-    // Owned features borrow nothing; attaching a borrowed `y` shortens the shared
-    // lifetime to that borrow, with no copy of either array.
+    // Owned features borrow nothing; attaching a borrowed `y` gives the dataset
+    // the lifetime of that borrow, with no copy of either array.
     let y = array![0.0, 1.0];
     let data = Dataset::new(array![[1.0], [2.0]]).with_y(&y).unwrap();
     assert_eq!(data.y().as_ptr(), y.as_ptr());
+}
+
+#[test]
+fn a_static_dataset_takes_borrowed_targets() {
+    // A `'static` dataset shortens to the borrow of `y`, as a `&'static` reference
+    // would, so it can take targets that live for less time.
+    let features: Dataset<'static> = Dataset::new(array![[1.0], [2.0]]);
+    let y = array![0.0, 1.0];
+    let data = features.with_y(&y).unwrap();
+    assert_eq!(data.y().as_ptr(), y.as_ptr());
+}
+
+/// `Dataset` and `Targets` shorten like references: a longer-lived one is accepted
+/// where a shorter-lived one is expected. Checked at compile time: if a change to
+/// ndarray made them invariant again, these functions would stop compiling.
+#[test]
+fn datasets_shorten_like_references() {
+    fn features<'a>(data: Dataset<'static>) -> Dataset<'a> {
+        data
+    }
+    fn with_targets<'a>(
+        data: Dataset<'static, f64, Unchecked, Targets<'static, f64>>,
+    ) -> Dataset<'a, f64, Unchecked, Targets<'a, f64>> {
+        data
+    }
+    let data = with_targets(Dataset::new(array![[1.0]]).with_y(array![2.0]).unwrap());
+    assert_eq!(data.y(), array![2.0]);
+    assert_eq!(features(Dataset::new(array![[1.0]])).n_samples(), 1);
 }
 
 #[test]

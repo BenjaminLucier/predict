@@ -6,13 +6,24 @@ mod targets;
 
 use std::marker::PhantomData;
 
-use ndarray::{ArrayView, ArrayView2, CowArray, Ix2};
+use ndarray::{ArrayBase, ArrayView, ArrayView2, CowArray, CowRepr, Ix2};
 
 pub use state::{Finite, InfinityFree, NoInfinity, State, Unchecked};
 pub use targets::{NoTargets, Target, TargetDim, TargetState, Targets};
 
 use crate::error::{check_len, reject_first};
 use crate::{Float, PredictError, Result};
+
+/// Exactly `CowArray<'a, A, D>`, spelled out, for struct fields.
+///
+/// ndarray 0.17 defines `CowArray` with its element type left to a default,
+/// `<CowRepr<'a, A> as RawData>::Elem`. Rust treats any struct with such a field
+/// as invariant over `'a`: a `Dataset<'static, ..>` could not be used where a
+/// shorter-lived one is expected. Naming the element type `A` directly gives the
+/// same type without that default, so `Dataset` and `Targets` are covariant, as
+/// references are. The `datasets_shorten_like_references` test checks this at
+/// compile time.
+pub(crate) type CovariantCowArray<'a, A, D> = ArrayBase<CowRepr<'a, A>, D, A>;
 
 /// Features `x`, one row per sample and one column per feature, tagged with a
 /// state `S` that says what is known about the values, plus optional targets `y`.
@@ -46,7 +57,7 @@ use crate::{Float, PredictError, Result};
 /// ```
 #[derive(Debug, Clone)]
 pub struct Dataset<'a, F: Float = f64, S: State = Unchecked, Y: TargetState = NoTargets> {
-    x: CowArray<'a, F, Ix2>,
+    x: CovariantCowArray<'a, F, Ix2>,
     targets: Y,
     state: PhantomData<S>,
 }
@@ -71,8 +82,9 @@ impl<'a, F: Float, S: State> Dataset<'a, F, S, NoTargets> {
     /// either way it has one row per sample.
     ///
     /// Features and targets then share one lifetime, the shorter of the two
-    /// borrows (`'a: 'b` reads "`'a` outlives `'b`"). Owned arrays borrow nothing,
-    /// so owned features with owned targets stay `'static`.
+    /// borrows: a longer-lived dataset shortens to the borrow of `y`, as a
+    /// reference would. Owned arrays borrow nothing, so owned features with owned
+    /// targets can be `'static`.
     ///
     /// Targets are attached once: a dataset with targets has no `with_y`, so
     /// attaching again doesn't compile:
@@ -95,13 +107,10 @@ impl<'a, F: Float, S: State> Dataset<'a, F, S, NoTargets> {
     /// - `EmptyInput` with `context = "y"` if a 2-D `y` has no outputs.
     /// - `NonFinite` with `context = "y"` at the first NaN or infinity in float
     ///   targets, in memory order; `col` is the output (`0` for 1-D `y`).
-    pub fn with_y<'b, T: Target, D: TargetDim>(
+    pub fn with_y<T: Target, D: TargetDim>(
         self,
-        y: impl Into<CowArray<'b, T, D>>,
-    ) -> Result<Dataset<'b, F, S, Targets<'b, T, D>>>
-    where
-        'a: 'b,
-    {
+        y: impl Into<CowArray<'a, T, D>>,
+    ) -> Result<Dataset<'a, F, S, Targets<'a, T, D>>> {
         let y = y.into();
         let y_matrix = targets::as_output_matrix(y.view());
         check_len("y", self.n_samples(), y_matrix.nrows())?;
@@ -165,7 +174,7 @@ impl<'a, F: Float, S: State, Y: TargetState> Dataset<'a, F, S, Y> {
     /// type, so this can produce any state without checking anything. It is
     /// private because the caller is responsible for `S` being true of `x` and
     /// `Y` of `targets`.
-    fn from_parts(x: CowArray<'a, F, Ix2>, targets: Y) -> Self {
+    fn from_parts(x: CovariantCowArray<'a, F, Ix2>, targets: Y) -> Self {
         Dataset {
             x,
             targets,
