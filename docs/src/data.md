@@ -142,12 +142,54 @@ would, and owned features with owned targets can be `'static`.
 ## Storage
 
 Inside, a dataset stores its features as blocks of adjacent columns placed side
-by side, each with one row per sample. `Dataset::new` makes a single block:
-your array, borrowed or owned. The storage is private, so it can hold other
-kinds of block without changing how a dataset is used.
+by side, each with one row per sample, and each dense or sparse.
+`Dataset::new` makes a single dense block: your array, borrowed or owned.
+`Dataset::from_csr` makes a single sparse one. The storage is private, so it
+can gain other kinds of block without changing how a dataset is used.
 
 `to_dense()` returns the features as one matrix. For a single dense block, as
-`new` makes, it borrows that block, without copying.
+`new` makes, it borrows that block, without copying; a sparse block is written
+out into a new matrix.
+
+## Sparse features
+
+Many features are mostly zeros: word counts over a vocabulary, or a one-hot
+encoding of a category with thousands of values. Storing every zero wastes
+memory and time, so a `CsrMatrix` stores only the entries that are there, row
+by row, in *compressed sparse row* (CSR) form:
+
+```rust
+{{#rustdoc_include ../../examples/data.rs:sparse}}
+```
+
+Three arrays describe it. Row $i$'s entries are positions
+`row_offsets[i]..row_offsets[i + 1]` of `col_indices`, their columns, and of
+`values`. Above, row 0 is positions 0 and 1: 5 in column 0 and 1 in column 3.
+`n_cols` is given separately, because columns with nothing stored leave no
+trace in the indices. Like dense arrays, each of the three is borrowed or moved
+in, never copied.
+
+`CsrMatrix::new` checks the structure: the offsets start at 0 and never
+decrease, there is one column index and one value per stored entry, and within
+a row the columns are less than `n_cols` and strictly increasing, so in order
+and never repeated. It returns `Malformed` or `ShapeMismatch` otherwise. The
+values are checked later, by the `validate_*` methods, as for dense features,
+and reported at their row and column.
+
+Reading a row is one slice, so CSR suits work done row by row, such as
+predictions. Reading a column means looking through every row.
+
+### What an absent entry means
+
+By default an entry that isn't stored is 0, as in scikit-learn: the sparse
+matrix is the dense one with its zeros left out, and `to_dense()` writes them
+back.
+
+XGBoost reads sparse input differently: there, an absent entry is missing.
+`with_absent(Absent::Missing)` gives a matrix that meaning. `to_dense()` then
+writes NaN, `validate_no_infinity` accepts absent entries like any missing
+value, and `validate_finite` reports the first one, so such a matrix becomes
+`Finite` only if it stores every entry.
 
 ## Float type
 

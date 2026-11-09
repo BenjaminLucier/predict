@@ -44,6 +44,16 @@ pub enum PredictError {
         reason: String,
     },
 
+    /// An input's structure is broken in a way no single value or length
+    /// describes, such as the column indices of a sparse row out of order.
+    ///
+    /// `reason` says what is wrong and where.
+    #[error("malformed {context}: {reason}")]
+    Malformed {
+        context: &'static str,
+        reason: String,
+    },
+
     /// A length or column count is not the one required, such as targets with a
     /// different number of rows than the features.
     #[error("{context}: expected {expected}, got {actual}")]

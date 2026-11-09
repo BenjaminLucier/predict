@@ -25,6 +25,15 @@ fn messages_name_the_source_and_the_location() {
         "invalid value -1 in sample_weights at row 3, column 0: must be non-negative"
     );
 
+    let err = PredictError::Malformed {
+        context: "col_indices",
+        reason: "row 2: column 4 does not come after column 4".to_string(),
+    };
+    assert_eq!(
+        err.to_string(),
+        "malformed col_indices: row 2: column 4 does not come after column 4"
+    );
+
     let err = PredictError::ShapeMismatch {
         context: "y",
         expected: 100,

@@ -58,11 +58,12 @@ at the root.
   parameter. `ndarray` is the public array type; `faer` stays internal.
 - **Dataset** (`src/dataset.rs`, book: `data.md`). `Dataset<'a, F = f64, S =
   Unchecked, Y = NoTargets>` stores the features as column blocks side by side
-  (private `Block` in `src/dataset/block.rs`; dense `CowArray` only so far),
-  never empty, each with `n_samples` rows. `new` takes `impl Into<CowArray>`,
-  so `&x` or a view borrows and `x` moves in, never copying, as one block;
-  transformers return owned data. Storage stays private: estimators read
-  `to_dense()`, which borrows a single dense block and assembles otherwise.
+  (private `Block` in `src/dataset/block.rs`: dense `CowArray` or sparse
+  `CsrMatrix`), never empty, each with `n_samples` rows. `new` takes `impl
+  Into<CowArray>`, so `&x` or a view borrows and `x` moves in, never copying,
+  as one dense block; `from_csr` makes one sparse block. Transformers return
+  owned data. Storage stays private: estimators read `to_dense()`, which
+  borrows a single dense block and assembles otherwise.
   Validation errors give the column across the whole dataset. `S` is a sealed `State`: `Unchecked`,
   `NoInfinity` (NaN allowed), `Finite`. `validate_no_infinity` /
   `validate_finite` scan once and move up; states never move down, and only the
@@ -86,12 +87,21 @@ at the root.
   (finite, non-negative) at the first bad row. A positive total is checked in
   `fit`, not here.
 
+- **Sparse** (`src/dataset/csr.rs`, book: `data.md`). `CsrMatrix<'a, F>`:
+  `n_cols` plus `row_offsets`, `col_indices`, `values` as `Cow` slices (`usize`
+  indices). `new` checks structure only, in order: offsets (non-empty, start
+  at 0, non-decreasing), lengths, then per row columns `< n_cols` and strictly
+  increasing (canonical form required). Values are checked by `validate_*`.
+  `Absent` (`#[non_exhaustive]`): `Zero` (default, scikit-learn) or `Missing`
+  (XGBoost); with `Missing`, absent entries are NaN for `to_dense` and
+  validation, so the matrix reaches `Finite` only if fully stored.
+
 - **Errors** (`src/error.rs`, book: `errors.md`). One public enum,
   `PredictError` (`thiserror`, `#[non_exhaustive]`), and the alias `Result<T>`,
   both re-exported at the crate root from a private `error` module. No `Clone` /
   `PartialEq`; tests use `matches!`. A variant is added in the commit that first
   raises it. `InvalidValue` covers a value outside its input's range (negative
-  weight). `context` names an input (`"y"`), a transformer (`"StandardScaler"`)
+  weight); `Malformed` a broken structure (unsorted sparse row). `context` names an input (`"y"`), a transformer (`"StandardScaler"`)
   or a method (`"validate_finite"`). Settings are checked in `fit`, never in
   `with_*`.
 

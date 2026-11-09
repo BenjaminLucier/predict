@@ -2,6 +2,7 @@
 //! targets and sample weights checked when they are attached.
 
 mod block;
+mod csr;
 mod state;
 mod targets;
 
@@ -9,6 +10,7 @@ use std::marker::PhantomData;
 
 use ndarray::{ArrayBase, ArrayView, ArrayView1, ArrayView2, Axis, CowArray, CowRepr, Ix1, Ix2};
 
+pub use csr::{Absent, CsrMatrix};
 pub use state::{Finite, InfinityFree, NoInfinity, State, Unchecked};
 pub use targets::{NoTargets, Target, TargetDim, TargetState, Targets};
 
@@ -83,6 +85,13 @@ impl<'a, F: Float> Dataset<'a, F, Unchecked, NoTargets> {
     /// be returned from a function as `Dataset<'static, ..>`.
     pub fn new(x: impl Into<CowArray<'a, F, Ix2>>) -> Self {
         Dataset::from_parts(vec![Block::Dense(x.into())], NoTargets, None)
+    }
+
+    /// Wrap a sparse feature matrix, without copying it: borrowed or owned as
+    /// its arrays are. Its structure was checked when it was built; its values
+    /// are checked by the `validate_*` methods, as for a dense one.
+    pub fn from_csr(x: CsrMatrix<'a, F>) -> Self {
+        Dataset::from_parts(vec![Block::Csr(x)], NoTargets, None)
     }
 }
 
@@ -200,7 +209,7 @@ impl<'a, F: Float, S: State, Y: TargetState> Dataset<'a, F, S, Y> {
         let mut col_offset = 0;
         for block in &self.blocks {
             block.reject_first(context, col_offset, &is_rejected)?;
-            col_offset += block.ncols();
+            col_offset += block.n_cols();
         }
         Ok(())
     }
@@ -225,32 +234,27 @@ impl<'a, F: Float, S: State, Y: TargetState> Dataset<'a, F, S, Y> {
 
     /// The features as one dense matrix: borrowed when they are stored as a
     /// single dense block, as a dataset made with [`new`](Dataset::new) is, and
-    /// assembled into an owned matrix otherwise.
+    /// assembled into an owned matrix otherwise. Sparse entries that aren't
+    /// stored are written out as 0, or as NaN when they mean missing.
     pub fn to_dense(&self) -> CowArray<'_, F, Ix2> {
-        match self.blocks.as_slice() {
-            [Block::Dense(x)] => x.view().into(),
-            blocks => {
-                let views: Vec<ArrayView2<'_, F>> = blocks
-                    .iter()
-                    .map(|block| match block {
-                        Block::Dense(x) => x.view(),
-                    })
-                    .collect();
-                ndarray::concatenate(Axis(1), &views)
-                    .expect("every block has n_samples rows")
-                    .into()
-            }
+        if let [block] = self.blocks.as_slice() {
+            return block.to_dense();
         }
+        let blocks: Vec<CowArray<'_, F, Ix2>> = self.blocks.iter().map(Block::to_dense).collect();
+        let views: Vec<ArrayView2<'_, F>> = blocks.iter().map(|block| block.view()).collect();
+        ndarray::concatenate(Axis(1), &views)
+            .expect("every block has n_samples rows")
+            .into()
     }
 
     /// The number of rows.
     pub fn n_samples(&self) -> usize {
-        self.blocks[0].nrows()
+        self.blocks[0].n_rows()
     }
 
     /// The number of columns, across all blocks.
     pub fn n_features(&self) -> usize {
-        self.blocks.iter().map(Block::ncols).sum()
+        self.blocks.iter().map(Block::n_cols).sum()
     }
 
     /// The weight of each row, borrowed, or `None` when every row weighs 1.

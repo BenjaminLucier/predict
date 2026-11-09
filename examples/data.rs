@@ -1,8 +1,8 @@
-//! The feature states and targets of a `Dataset`. Run with
+//! The feature states, targets, weights and sparse features of a `Dataset`. Run with
 //! `cargo run --example data`.
 
 use ndarray::array;
-use predict::dataset::Finite;
+use predict::dataset::{CsrMatrix, Finite};
 use predict::{Dataset, PredictError, Result};
 
 fn main() -> Result<()> {
@@ -63,6 +63,24 @@ fn main() -> Result<()> {
         labelled.y().len(),
         multi.y().dim(),
         weighted.sample_weights().map(|w| w.to_vec())
+    );
+
+    // ANCHOR: sparse
+    // How often each of four words appears in each of three documents:
+    // [ 5  0  0  1 ]
+    // [ 0  0  2  0 ]
+    // [ 0  3  0  0 ]
+    let row_offsets = vec![0, 2, 3, 4];
+    let col_indices = vec![0, 3, 2, 1];
+    let values = vec![5.0, 1.0, 2.0, 3.0];
+    let counts = CsrMatrix::new(4, row_offsets, col_indices, values)?;
+    let documents = Dataset::from_csr(counts).validate_finite()?;
+    // ANCHOR_END: sparse
+    println!(
+        "{} documents, {} words: {}",
+        documents.n_samples(),
+        documents.n_features(),
+        documents.to_dense()
     );
 
     Ok(())
