@@ -104,6 +104,9 @@ at the root.
   method" when you mean the method.
 - Code shown in the book lives in `examples/` and is pulled in with
   `{{#include}}`, so `cargo check --all-targets` compiles it.
+- Maths in the book: `$...$` inline and `$$...$$` for display, rendered at build
+  time by mdbook-katex; diagrams in Mermaid. Rustdoc has no maths rendering, so
+  doc comments use plain notation and link to the book for the derivation.
 - Links: book pages use relative links; book to API docs uses
   `/api/predict/...`; rustdoc to book uses `https://predict.rs/...`.
 

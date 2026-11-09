@@ -23,3 +23,9 @@ runnable = false
 # `mdbook-mermaid install docs`; re-run it after upgrading mdbook-mermaid.
 [preprocessor.mermaid]
 command = "mdbook-mermaid"
+
+# Maths: `$...$` inline, `$$...$$` on its own line, rendered to HTML at build
+# time (no JavaScript in the page). Runs after `links` so it also sees text
+# pulled in with `{{#include}}`.
+[preprocessor.katex]
+after = ["links"]

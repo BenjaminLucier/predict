@@ -3,11 +3,14 @@
 ## Setup
 
 You need a stable Rust toolchain (edition 2024) and, for this book,
-[mdBook](https://rust-lang.github.io/mdBook/) and its Mermaid plugin for diagrams:
+[mdBook](https://rust-lang.github.io/mdBook/) with its Mermaid plugin for
+diagrams and its KaTeX plugin for maths:
 
 ```bash
-cargo install mdbook mdbook-mermaid
+cargo install mdbook mdbook-mermaid mdbook-katex
 ```
+
+`cargo binstall` installs the same three as prebuilt binaries, if you have it.
 
 ## Checks
 
