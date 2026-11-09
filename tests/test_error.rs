@@ -13,6 +13,18 @@ fn messages_name_the_source_and_the_location() {
         "non-finite value NaN in y at row 41, column 0"
     );
 
+    let err = PredictError::InvalidValue {
+        context: "sample_weights",
+        row: 3,
+        col: 0,
+        value: -1.0,
+        reason: "must be non-negative".to_string(),
+    };
+    assert_eq!(
+        err.to_string(),
+        "invalid value -1 in sample_weights at row 3, column 0: must be non-negative"
+    );
+
     let err = PredictError::ShapeMismatch {
         context: "y",
         expected: 100,

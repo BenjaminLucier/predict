@@ -29,6 +29,21 @@ pub enum PredictError {
         value: f64,
     },
 
+    /// A value outside the range its input allows, such as a negative sample
+    /// weight.
+    ///
+    /// `row` and `col` locate it as for `NonFinite`; a 1-D input reports
+    /// `col = 0`. `reason` states the requirement, such as "must be
+    /// non-negative".
+    #[error("invalid value {value} in {context} at row {row}, column {col}: {reason}")]
+    InvalidValue {
+        context: &'static str,
+        row: usize,
+        col: usize,
+        value: f64,
+        reason: String,
+    },
+
     /// A length or column count is not the one required, such as targets with a
     /// different number of rows than the features.
     #[error("{context}: expected {expected}, got {actual}")]

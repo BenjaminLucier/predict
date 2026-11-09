@@ -16,6 +16,7 @@ first non-finite value in memory order:
 | Variant | Meaning |
 |---|---|
 | `NonFinite { context, row, col, value }` | A NaN or infinity where finite values are required. `row` and `col` give the first non-finite value in memory order; with several, which one is reported depends on how the array is stored. A 1-D input reports `col = 0`. |
+| `InvalidValue { context, row, col, value, reason }` | A value outside the range its input allows, such as a negative sample weight. `row` and `col` locate it as for `NonFinite`; `reason` states the requirement, such as `must be non-negative`. |
 | `ShapeMismatch { context, expected, actual }` | A length or column count is not the one required, such as targets with a different number of rows than the features. |
 | `EmptyInput { context }` | An input has no rows or no columns where at least one is required. |
 | `InvalidParameter { name, reason }` | A setting is outside its valid range, or conflicts with the data. |

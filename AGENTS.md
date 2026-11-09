@@ -74,12 +74,20 @@ at the root.
   spelled out), so `Dataset` and `Targets` are covariant over `'a` despite
   ndarray 0.17's projection default; `datasets_shorten_like_references` guards
   it.
+- **Sample weights** (`src/dataset.rs`, book: `data.md`). A field,
+  `Option<CovariantCowArray<'a, F, Ix1>>`, not a type parameter: every
+  estimator supports weights. `None` means every row weighs 1 (estimators take
+  the unweighted fast path). `with_sample_weights` works in any state and
+  target state, replaces earlier weights, and checks length, then each value
+  (finite, non-negative) at the first bad row. A positive total is checked in
+  `fit`, not here.
 
 - **Errors** (`src/error.rs`, book: `errors.md`). One public enum,
   `PredictError` (`thiserror`, `#[non_exhaustive]`), and the alias `Result<T>`,
   both re-exported at the crate root from a private `error` module. No `Clone` /
   `PartialEq`; tests use `matches!`. A variant is added in the commit that first
-  raises it. `context` names an input (`"y"`), a transformer (`"StandardScaler"`)
+  raises it. `InvalidValue` covers a value outside its input's range (negative
+  weight). `context` names an input (`"y"`), a transformer (`"StandardScaler"`)
   or a method (`"validate_finite"`). Settings are checked in `fit`, never in
   `with_*`.
 

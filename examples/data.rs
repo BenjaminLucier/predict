@@ -51,11 +51,18 @@ fn main() -> Result<()> {
     let both = array![[20.0, 0.5], [21.0, 0.6], [19.5, 0.4]];
     let multi = Dataset::new(&x).with_y(&both)?;
     // ANCHOR_END: targets
+
+    // ANCHOR: weights
+    // The second house sold twice: give it weight 2 instead of a second row.
+    let counts = array![1.0, 2.0, 1.0];
+    let weighted = data.with_sample_weights(&counts)?;
+    // ANCHOR_END: weights
     println!(
-        "targets: {} prices, {} classes, {:?} outputs",
-        data.y().len(),
+        "targets: {} prices, {} classes, {:?} outputs; weights {:?}",
+        weighted.y().len(),
         labelled.y().len(),
-        multi.y().dim()
+        multi.y().dim(),
+        weighted.sample_weights().map(|w| w.to_vec())
     );
 
     Ok(())

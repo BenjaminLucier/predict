@@ -84,6 +84,42 @@ describes only the features: features with missing values (`NoInfinity`) can
 carry targets, and those targets are still finite. The `validate_*` methods
 keep the targets as they are.
 
+## Sample weights
+
+Weights say how much each row counts. Weighted maths replaces every count with a
+sum of weights. The mean becomes
+
+$$\bar y = \frac{\sum_i w_i \, y_i}{\sum_i w_i} \quad \text{instead of} \quad \frac{1}{n} \sum_i y_i,$$
+
+and least squares minimises $\sum_i w_i \, (y_i - \hat y_i)^2$. Weights are how
+you trust some rows more than others, or store repeated rows once with their
+count.
+
+Wherever a model's objective is a sum over rows like these, a row with weight 2
+has the same effect as the row appearing twice, and weight 0 the same as leaving
+it out. That holds for most estimators, but not for every setting: a minimum
+number of rows per tree leaf counts rows, not weight, and random sampling (as in
+a random forest) draws a duplicated row twice as often as a weighted one. Each
+estimator's page says where weights and repeated rows differ.
+
+Every row weighs 1 until `with_sample_weights` sets a weight per row:
+
+```rust
+{{#rustdoc_include ../../examples/data.rs:weights}}
+```
+
+`sample_weights()` returns `None` while every row weighs 1, so estimators skip
+the multiplications entirely instead of multiplying by a column of ones.
+
+`with_sample_weights` checks one weight per sample, each finite and
+non-negative. It doesn't require the weights to add up to more than zero: that
+is checked in `fit`, like an empty dataset, because a subset of the rows (a
+cross-validation fold) can weigh nothing even when the whole dataset doesn't.
+
+Like targets, weights work in any feature state, before or after `with_y`, and
+the `validate_*` methods keep them as they are. Calling `with_sample_weights`
+again replaces them.
+
 ## Borrowed or owned
 
 `Dataset::new` never copies. How you pass the array decides who owns it:
@@ -98,8 +134,8 @@ Transformers return owned datasets. Both are the same type: `Dataset<'a, ..>`
 borrows for the lifetime `'a`, and an owned dataset borrows nothing, so it can be
 `Dataset<'static, ..>` and be returned from the function that made it.
 
-`with_y` works the same way: `&y` or `y.view()` borrows the targets and `y`
-moves them in. Features and targets share one lifetime, the shorter of their
+`with_y` and `with_sample_weights` work the same way: `&y` or `y.view()`
+borrows and `y` moves in. Features, targets and weights share one lifetime, the shorter of their
 borrows: a long-lived dataset shortens to the targets' borrow, as a reference
 would, and owned features with owned targets can be `'static`.
 

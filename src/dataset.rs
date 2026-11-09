@@ -1,12 +1,12 @@
-//! Feature data tagged with what is known about its values, and optional
-//! targets checked when they are attached.
+//! Feature data tagged with what is known about its values, with optional
+//! targets and sample weights checked when they are attached.
 
 mod state;
 mod targets;
 
 use std::marker::PhantomData;
 
-use ndarray::{ArrayBase, ArrayView, ArrayView2, CowArray, CowRepr, Ix2};
+use ndarray::{ArrayBase, ArrayView, ArrayView1, ArrayView2, CowArray, CowRepr, Ix1, Ix2};
 
 pub use state::{Finite, InfinityFree, NoInfinity, State, Unchecked};
 pub use targets::{NoTargets, Target, TargetDim, TargetState, Targets};
@@ -26,7 +26,8 @@ use crate::{Float, PredictError, Result};
 pub(crate) type CovariantCowArray<'a, A, D> = ArrayBase<CowRepr<'a, A>, D, A>;
 
 /// Features `x`, one row per sample and one column per feature, tagged with a
-/// state `S` that says what is known about the values, plus optional targets `y`.
+/// state `S` that says what is known about the values, plus optional targets `y`
+/// and sample weights.
 ///
 /// - `F` is the float type, `f64` by default.
 /// - `S` is [`Unchecked`] when the dataset is created; the `validate_*` methods
@@ -34,15 +35,19 @@ pub(crate) type CovariantCowArray<'a, A, D> = ArrayBase<CowRepr<'a, A>, D, A>;
 /// - `Y` is [`NoTargets`] until [`with_y`](Dataset::with_y) attaches checked
 ///   [`Targets`].
 ///
-/// `S` and `Y` are independent: `S` describes only the features, and targets
-/// are checked when they are attached, so the `validate_*` methods keep them as
-/// they are.
+/// Every row weighs 1 unless [`with_sample_weights`](Dataset::with_sample_weights)
+/// sets a weight per row. Every estimator accepts weights, so they are a value in
+/// the dataset rather than part of its type.
+///
+/// `S` describes only the features. Targets and weights are checked when they are
+/// attached, so the `validate_*` methods keep them as they are.
 ///
 /// A `Dataset` either borrows the caller's arrays or owns them, decided by how
-/// they are passed to [`new`](Dataset::new) and [`with_y`](Dataset::with_y);
-/// neither copies. Transformers return owned datasets. Both are the same type:
-/// `'a` is the lifetime of the borrows, shared by features and targets, and an
-/// owned dataset can be `Dataset<'static, ..>`.
+/// they are passed to [`new`](Dataset::new), [`with_y`](Dataset::with_y) and
+/// [`with_sample_weights`](Dataset::with_sample_weights); none of them copies. Transformers return owned datasets.
+/// Both are the same type: `'a` is the lifetime of the borrows, shared by
+/// features, targets and weights, and an owned dataset can be
+/// `Dataset<'static, ..>`.
 ///
 /// States only move up. A `Finite` dataset has no `validate_finite`, so checking
 /// twice doesn't compile:
@@ -59,6 +64,8 @@ pub(crate) type CovariantCowArray<'a, A, D> = ArrayBase<CowRepr<'a, A>, D, A>;
 pub struct Dataset<'a, F: Float = f64, S: State = Unchecked, Y: TargetState = NoTargets> {
     x: CovariantCowArray<'a, F, Ix2>,
     targets: Y,
+    // `None` means every row weighs 1, without storing a column of ones.
+    sample_weights: Option<CovariantCowArray<'a, F, Ix1>>,
     state: PhantomData<S>,
 }
 
@@ -69,7 +76,7 @@ impl<'a, F: Float> Dataset<'a, F, Unchecked, NoTargets> {
     /// array is owned by the dataset, which then doesn't borrow anything, so it can
     /// be returned from a function as `Dataset<'static, ..>`.
     pub fn new(x: impl Into<CowArray<'a, F, Ix2>>) -> Self {
-        Dataset::from_parts(x.into(), NoTargets)
+        Dataset::from_parts(x.into(), NoTargets, None)
     }
 }
 
@@ -119,7 +126,11 @@ impl<'a, F: Float, S: State> Dataset<'a, F, S, NoTargets> {
             return Err(PredictError::EmptyInput { context: "y" });
         }
         targets::check(y_matrix)?;
-        Ok(Dataset::from_parts(self.x, Targets { y }))
+        Ok(Dataset::from_parts(
+            self.x,
+            Targets { y },
+            self.sample_weights,
+        ))
     }
 }
 
@@ -135,7 +146,11 @@ impl<'a, F: Float, Y: TargetState> Dataset<'a, F, Unchecked, Y> {
         reject_first("validate_no_infinity", self.view(), |value| {
             value.is_infinite()
         })?;
-        Ok(Dataset::from_parts(self.x, self.targets))
+        Ok(Dataset::from_parts(
+            self.x,
+            self.targets,
+            self.sample_weights,
+        ))
     }
 
     /// Scan every value once and move to `Finite`. Targets are kept as they are.
@@ -167,17 +182,26 @@ impl<'a, F: Float, S: State, Y: TargetState> Dataset<'a, F, S, Y> {
     // states that can still move up, so calling it on `Finite` data doesn't compile.
     fn into_finite(self) -> Result<Dataset<'a, F, Finite, Y>> {
         reject_first("validate_finite", self.view(), |value| !value.is_finite())?;
-        Ok(Dataset::from_parts(self.x, self.targets))
+        Ok(Dataset::from_parts(
+            self.x,
+            self.targets,
+            self.sample_weights,
+        ))
     }
 
     /// The one place a `Dataset` is assembled. `S` comes from the caller's return
     /// type, so this can produce any state without checking anything. It is
-    /// private because the caller is responsible for `S` being true of `x` and
-    /// `Y` of `targets`.
-    fn from_parts(x: CovariantCowArray<'a, F, Ix2>, targets: Y) -> Self {
+    /// private because the caller is responsible for `S` being true of `x`, `Y` of
+    /// `targets`, and `sample_weights` having been checked.
+    fn from_parts(
+        x: CovariantCowArray<'a, F, Ix2>,
+        targets: Y,
+        sample_weights: Option<CovariantCowArray<'a, F, Ix1>>,
+    ) -> Self {
         Dataset {
             x,
             targets,
+            sample_weights,
             state: PhantomData,
         }
     }
@@ -196,6 +220,71 @@ impl<'a, F: Float, S: State, Y: TargetState> Dataset<'a, F, S, Y> {
     pub fn n_features(&self) -> usize {
         self.x.ncols()
     }
+
+    /// The weight of each row, borrowed, or `None` when every row weighs 1.
+    ///
+    /// Estimators match on it: `None` takes the unweighted path, which gives the
+    /// same result as a column of ones without multiplying by them.
+    pub fn sample_weights(&self) -> Option<ArrayView1<'_, F>> {
+        self.sample_weights.as_ref().map(|weights| weights.view())
+    }
+}
+
+impl<'a, F: Float, S: State, Y: TargetState> Dataset<'a, F, S, Y> {
+    /// Set a weight per row, replacing any set before. Works in any feature state,
+    /// before or after [`with_y`](Dataset::with_y), without copying `weights`: pass
+    /// `&weights` or `weights.view()` to borrow them, or `weights` to move them in.
+    ///
+    /// A weight scales how much a row contributes to what an estimator fits: for
+    /// most estimators, weight 2 has the same effect as the row appearing twice,
+    /// and weight 0 the same as leaving it out. Each estimator documents where it
+    /// differs. Like targets, the weights share the dataset's lifetime.
+    ///
+    /// Whether any weight is left to learn from (a positive total) is checked by
+    /// the estimator in `fit`, as for an empty dataset: a subset of the rows, such
+    /// as a cross-validation fold, can weigh nothing even when the whole doesn't.
+    ///
+    /// # Errors
+    ///
+    /// Checked in this order:
+    ///
+    /// - `ShapeMismatch` with `context = "sample_weights"` if there isn't one
+    ///   weight per sample.
+    /// - At the first bad row: `NonFinite` with `context = "sample_weights"` for
+    ///   a NaN or infinite weight, or `InvalidValue` for a negative one.
+    pub fn with_sample_weights(self, weights: impl Into<CowArray<'a, F, Ix1>>) -> Result<Self> {
+        let weights = checked_weights(self.n_samples(), weights.into())?;
+        Ok(Dataset::from_parts(self.x, self.targets, Some(weights)))
+    }
+}
+
+/// `weights` if there is one per sample and each is finite and non-negative,
+/// checked row by row. `-0.0` is accepted: it compares equal to `0.0`.
+fn checked_weights<F: Float>(
+    n_samples: usize,
+    weights: CowArray<'_, F, Ix1>,
+) -> Result<CowArray<'_, F, Ix1>> {
+    check_len("sample_weights", n_samples, weights.len())?;
+    for (row, &weight) in weights.indexed_iter() {
+        if !weight.is_finite() {
+            return Err(PredictError::NonFinite {
+                context: "sample_weights",
+                row,
+                col: 0,
+                value: weight.into(),
+            });
+        }
+        if weight < F::zero() {
+            return Err(PredictError::InvalidValue {
+                context: "sample_weights",
+                row,
+                col: 0,
+                value: weight.into(),
+                reason: "must be non-negative".to_string(),
+            });
+        }
+    }
+    Ok(weights)
 }
 
 impl<'a, F: Float, S: State, T: Target, D: TargetDim> Dataset<'a, F, S, Targets<'a, T, D>> {
