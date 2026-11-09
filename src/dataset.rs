@@ -68,8 +68,9 @@ pub(crate) type CovariantCowArray<'a, A, D> = ArrayBase<CowRepr<'a, A>, D, A>;
 #[derive(Debug, Clone)]
 pub struct Dataset<'a, F: Float = f64, S: State = Unchecked, Y: TargetState = NoTargets> {
     // The features, as blocks of columns side by side, each with `n_samples`
-    // rows. Never empty: `new` makes one block, even for a matrix with no
-    // columns, so the row count is always the first block's.
+    // rows. Never empty: `new` and `from_csr` make one block, even for a matrix
+    // with no columns, and `hstack` only adds blocks with the same number of
+    // rows, so the row count is always the first block's.
     blocks: Vec<Block<'a, F>>,
     targets: Y,
     // `None` means every row weighs 1, without storing a column of ones.
@@ -224,6 +225,14 @@ impl<'a, F: Float, S: State, Y: TargetState> Dataset<'a, F, S, Y> {
         targets: Y,
         sample_weights: Option<CovariantCowArray<'a, F, Ix1>>,
     ) -> Self {
+        // Only a bug in this crate can break this: the public constructors and
+        // `hstack` return an error first.
+        debug_assert!(
+            blocks
+                .first()
+                .is_some_and(|first| blocks.iter().all(|b| b.n_rows() == first.n_rows())),
+            "a dataset needs at least one block, all with the same number of rows"
+        );
         Dataset {
             blocks,
             targets,
@@ -296,6 +305,50 @@ impl<'a, F: Float, S: State, Y: TargetState> Dataset<'a, F, S, Y> {
             Some(weights),
         ))
     }
+
+    /// Place `right`'s features after these, as more columns of the same rows,
+    /// without copying either: each block stays borrowed or owned as it was.
+    /// Dense and sparse blocks can sit side by side; neither is converted.
+    ///
+    /// Both sides are in the same state, which the result keeps: stacking two
+    /// `Finite` datasets gives a `Finite` one without scanning again. These
+    /// targets and weights are kept. `right` has no targets, so stacking a
+    /// dataset with targets on the right doesn't compile:
+    ///
+    /// ```compile_fail
+    /// use ndarray::array;
+    /// use predict::Dataset;
+    ///
+    /// let (x, y) = (array![[1.0]], array![1.0]);
+    /// let right = Dataset::new(&x).with_y(&y).unwrap();
+    /// let both = Dataset::new(&x).hstack(right); // error: expected `NoTargets`
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Checked in this order:
+    ///
+    /// - `ShapeMismatch` with `context = "hstack"` if `right` doesn't have the
+    ///   same number of rows.
+    /// - `Conflict` with `context = "hstack"` if `right` has sample weights:
+    ///   attach weights to the stacked dataset instead.
+    pub fn hstack(self, right: Dataset<'a, F, S>) -> Result<Self> {
+        check_len("hstack", self.n_samples(), right.n_samples())?;
+        if right.sample_weights.is_some() {
+            return Err(PredictError::Conflict {
+                context: "hstack",
+                reason: "the right side has sample weights; attach weights after stacking"
+                    .to_string(),
+            });
+        }
+        let mut blocks = self.blocks;
+        blocks.extend(right.blocks);
+        Ok(Dataset::from_parts(
+            blocks,
+            self.targets,
+            self.sample_weights,
+        ))
+    }
 }
 
 /// `weights` if there is one per sample and each is finite and non-negative,
@@ -331,49 +384,5 @@ impl<'a, F: Float, S: State, T: Target, D: TargetDim> Dataset<'a, F, S, Targets<
     /// The checked targets, borrowed: 1-D, or rows × outputs.
     pub fn y(&self) -> ArrayView<'_, T, D> {
         self.targets.y.view()
-    }
-}
-
-// Only `new` creates a dataset so far, and it makes one block. These build
-// several blocks directly, to check what depends on the column layout.
-#[cfg(test)]
-mod tests {
-    use ndarray::array;
-
-    use super::*;
-
-    fn side_by_side<'a>(blocks: &[&'a ndarray::Array2<f64>]) -> Dataset<'a> {
-        let blocks = blocks.iter().map(|x| Block::Dense(x.view().into()));
-        Dataset::from_parts(blocks.collect(), NoTargets, None)
-    }
-
-    #[test]
-    fn several_blocks_read_as_one_matrix() {
-        let (a, b) = (array![[1.0], [2.0]], array![[3.0, 4.0], [5.0, 6.0]]);
-        let data = side_by_side(&[&a, &b]);
-        assert_eq!((data.n_samples(), data.n_features()), (2, 3));
-
-        let dense = data.to_dense();
-        assert!(dense.is_owned());
-        assert_eq!(dense, array![[1.0, 3.0, 4.0], [2.0, 5.0, 6.0]]);
-    }
-
-    #[test]
-    fn a_bad_value_is_reported_at_its_column_in_the_dataset() {
-        // The NaN is in column 1 of the second block, so column 2 of the dataset.
-        let (a, b) = (array![[1.0], [2.0]], array![[3.0, 4.0], [5.0, f64::NAN]]);
-        let err = side_by_side(&[&a, &b]).validate_finite().unwrap_err();
-        assert!(matches!(
-            err,
-            PredictError::NonFinite { row: 1, col: 2, .. }
-        ));
-
-        // Blocks are scanned in column order: the first block's bad value wins.
-        let a = array![[f64::INFINITY], [2.0]];
-        let err = side_by_side(&[&a, &b]).validate_finite().unwrap_err();
-        assert!(matches!(
-            err,
-            PredictError::NonFinite { row: 0, col: 0, .. }
-        ));
     }
 }

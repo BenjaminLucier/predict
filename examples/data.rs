@@ -1,4 +1,4 @@
-//! The feature states, targets, weights and sparse features of a `Dataset`. Run with
+//! The feature states, targets, weights and dense and sparse features of a `Dataset`. Run with
 //! `cargo run --example data`.
 
 use ndarray::array;
@@ -81,6 +81,20 @@ fn main() -> Result<()> {
         documents.n_samples(),
         documents.n_features(),
         documents.to_dense()
+    );
+
+    // ANCHOR: hstack
+    // Each document's length in words: a dense column, beside the sparse counts.
+    let lengths = array![[120.0], [80.0], [45.0]];
+    let features = Dataset::new(&lengths)
+        .validate_finite()?
+        .hstack(documents)?;
+    // ANCHOR_END: hstack
+    println!(
+        "{} documents, {} features: {}",
+        features.n_samples(),
+        features.n_features(),
+        features.to_dense()
     );
 
     Ok(())

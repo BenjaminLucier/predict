@@ -54,6 +54,16 @@ pub enum PredictError {
         reason: String,
     },
 
+    /// Two inputs, each valid on its own, can't be combined, such as two sets
+    /// of sample weights for the same rows.
+    ///
+    /// `reason` says what conflicts and how to resolve it.
+    #[error("{context}: {reason}")]
+    Conflict {
+        context: &'static str,
+        reason: String,
+    },
+
     /// A length or column count is not the one required, such as targets with a
     /// different number of rows than the features.
     #[error("{context}: expected {expected}, got {actual}")]

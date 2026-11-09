@@ -61,9 +61,13 @@ at the root.
   (private `Block` in `src/dataset/block.rs`: dense `CowArray` or sparse
   `CsrMatrix`), never empty, each with `n_samples` rows. `new` takes `impl
   Into<CowArray>`, so `&x` or a view borrows and `x` moves in, never copying,
-  as one dense block; `from_csr` makes one sparse block. Transformers return
-  owned data. Storage stays private: estimators read `to_dense()`, which
-  borrows a single dense block and assembles otherwise.
+  as one dense block; `from_csr` makes one sparse block. `hstack` appends a
+  right-hand dataset's blocks (same rows, same `S`, `NoTargets`, no weights,
+  else `ShapeMismatch` / `Conflict`), copying and converting nothing; the
+  left's targets and weights are kept. `from_parts` `debug_assert!`s the block
+  invariant. Transformers return owned data. Storage stays private: estimators
+  read `to_dense()`, which borrows a single dense block and assembles
+  otherwise.
   Validation errors give the column across the whole dataset. `S` is a sealed `State`: `Unchecked`,
   `NoInfinity` (NaN allowed), `Finite`. `validate_no_infinity` /
   `validate_finite` scan once and move up; states never move down, and only the
@@ -101,7 +105,9 @@ at the root.
   both re-exported at the crate root from a private `error` module. No `Clone` /
   `PartialEq`; tests use `matches!`. A variant is added in the commit that first
   raises it. `InvalidValue` covers a value outside its input's range (negative
-  weight); `Malformed` a broken structure (unsorted sparse row). `context` names an input (`"y"`), a transformer (`"StandardScaler"`)
+  weight); `Malformed` a broken structure (unsorted sparse row); `Conflict`
+  two valid inputs that can't be combined (weights on both sides of
+  `hstack`). `context` names an input (`"y"`), a transformer (`"StandardScaler"`)
   or a method (`"validate_finite"`). Settings are checked in `fit`, never in
   `with_*`.
 

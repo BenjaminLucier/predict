@@ -148,8 +148,31 @@ by side, each with one row per sample, and each dense or sparse.
 can gain other kinds of block without changing how a dataset is used.
 
 `to_dense()` returns the features as one matrix. For a single dense block, as
-`new` makes, it borrows that block, without copying; a sparse block is written
-out into a new matrix.
+`new` makes, it borrows that block, without copying; otherwise the blocks are
+written out side by side into a new matrix.
+
+### Stacking features side by side
+
+`hstack` places one dataset's features after another's, as more columns of the
+same rows, so dense and sparse features can sit in one dataset:
+
+```rust
+{{#rustdoc_include ../../examples/data.rs:hstack}}
+```
+
+Nothing is copied or converted: each block is moved into the result, borrowed
+or owned as it was, and a sparse block stays sparse. The columns keep their
+order, left side first, so a bad value found by `validate_*` is reported at its
+column in the stacked dataset.
+
+Both sides need the same number of rows, or `hstack` returns `ShapeMismatch`.
+They are also in the same state, which the result keeps, so two `Finite`
+datasets stack into a `Finite` one without another scan; to stack fresh data
+onto checked data, validate the fresh part first.
+
+Targets and weights belong to rows, so only the left side keeps its own. A right
+side with targets doesn't compile, and one with weights returns `Conflict`:
+attach targets and weights after stacking.
 
 ## Sparse features
 
