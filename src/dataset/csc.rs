@@ -131,6 +131,12 @@ impl<'a, F: Float> CscMatrix<'a, F> {
         }
     }
 
+    /// Every stored entry as `(row, col, value)`, column by column.
+    pub(super) fn for_each_stored(&self, mut visit: impl FnMut(usize, usize, F)) {
+        self.cols
+            .for_each_stored(|col, row, value| visit(row, col, value));
+    }
+
     /// The same matrix with every entry written out: absent ones as 0 or NaN.
     /// Column-major, as it is stored.
     pub(super) fn to_dense(&self) -> Array2<F> {

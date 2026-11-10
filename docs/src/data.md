@@ -194,9 +194,10 @@ transposed view or a column-major array doesn't. Wrap column-major data with
 the state after it, as in `Dataset<'_, f64, DenseRowMajor<'_>, Finite>`, or
 leave it to inference with `_`.
 
-`to_dense()` returns the features as one matrix. For a single dense block, as
-`new` makes, it borrows that block, without copying; otherwise the blocks are
-written out side by side into a new matrix.
+`blocks()` lends out the blocks themselves, in column order, and never copies:
+a dense block as an `ArrayView2`, a sparse one as its `CsrMatrix` or
+`CscMatrix`. Reading every value as one dense matrix is a conversion, below,
+because for sparse data it can be far larger than what is stored.
 
 ### Stacking features side by side
 
@@ -224,7 +225,53 @@ onto checked data, validate the fresh part first.
 
 Targets and weights belong to rows, so only the left side keeps its own. A right
 side with targets doesn't compile, and one with weights returns `Conflict`:
-attach targets and weights after stacking.
+attach targets and weights after stacking. Sparse blocks on both sides also
+need the same meaning for the entries they don't store (see [What an absent
+entry means](#what-an-absent-entry-means)), or `hstack` returns `Conflict`, so
+a dataset never holds two meanings at once.
+
+### Converting between layouts
+
+The layout changes only where you say so. Four methods take the dataset and
+return its features as a single block of one kind:
+
+| Method | Result |
+|---|---|
+| `into_dense_row_major()` | `DenseRowMajor` |
+| `into_dense_col_major()` | `DenseColMajor` |
+| `into_csr()`, `into_csr_with(absent)` | `SparseRowMajor` |
+| `into_csc()`, `into_csc_with(absent)` | `SparseColMajor` |
+
+```rust
+{{#rustdoc_include ../../examples/data.rs:convert}}
+```
+
+A conversion usually copies: it allocates the result once and writes every
+block into it. When the dataset already is one block of the target kind it
+moves that block instead, so converting a dataset made by `new` to
+`DenseRowMajor` still borrows your array. Either way the values don't change,
+only how they are stored, so the state, targets and weights are kept.
+
+To a sparse layout, a value is left out exactly when it is what an absent
+entry stands for. `into_csr()` keeps the meaning the dataset's sparse blocks
+have (0 if it has none); `into_csr_with(absent)` chooses one. Choosing
+`Absent::Missing` for a matrix whose absent entries were 0 stores those zeros,
+since leaving them out would turn them into missing values.
+
+Building CSR is a counting sort over rows. One walk over the blocks counts the
+entries each row will hold, a running sum turns the counts into
+`row_offsets`, and a second walk writes each entry at its row's next free
+position. Each block is walked in its own order, left to right, so the columns
+within a row arrive in increasing order and need no sorting. CSC is the same
+walk with columns as the lanes. It takes time proportional to the dense
+blocks' size plus the sparse blocks' stored entries.
+
+There is no read that turns the features into a dense matrix behind the
+scenes: for a million documents of word counts over a hundred thousand words,
+the dense `f64` matrix would take 800 GB, while about a hundred distinct words
+per document store in under 2 GB.
+To look at every value, convert, with `clone()` first if you want to keep the
+original, and read the result's one block with `blocks()`.
 
 ## Sparse features
 
@@ -268,14 +315,20 @@ one feature's coefficient at a time:
 ### What an absent entry means
 
 By default an entry that isn't stored is 0, as in scikit-learn: the sparse
-matrix is the dense one with its zeros left out, and `to_dense()` writes them
-back.
+matrix is the dense one with its zeros left out, and converting it to a
+dense layout writes them back.
 
 XGBoost reads sparse input differently: there, an absent entry is missing.
-`with_absent(Absent::Missing)` gives a matrix that meaning. `to_dense()` then
-writes NaN, `validate_no_infinity` accepts absent entries like any missing
+`with_absent(Absent::Missing)` gives a matrix that meaning. Converting it to
+a dense layout then writes NaN, `validate_no_infinity` accepts absent entries like any missing
 value, and `validate_finite` reports the first one, so such a matrix becomes
 `Finite` only if it stores every entry.
+
+`Dataset::with_absent` gives every sparse block in a dataset a meaning at
+once, without copying: the stored entries stay and what the others stand for
+changes. That changes values, so it exists only on `Unchecked` datasets; to
+keep the values and change how they are stored, convert with
+`into_csr_with` or `into_csc_with`.
 
 ## Float type
 

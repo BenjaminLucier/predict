@@ -22,6 +22,25 @@ pub enum Absent {
     Missing,
 }
 
+impl Absent {
+    /// The value an entry that isn't stored stands for.
+    pub(super) fn value<F: Float>(self) -> F {
+        match self {
+            Absent::Zero => F::zero(),
+            Absent::Missing => F::nan(),
+        }
+    }
+
+    /// Whether `value` is what an entry that isn't stored stands for, so a
+    /// sparse matrix with this meaning can leave it out. `-0.0` counts as 0.
+    pub(super) fn stands_for<F: Float>(self, value: F) -> bool {
+        match self {
+            Absent::Zero => value == F::zero(),
+            Absent::Missing => value.is_nan(),
+        }
+    }
+}
+
 /// How a compressed matrix's parts are named in errors: CSR has row offsets and
 /// column indices, CSC column offsets and row indices.
 pub(super) struct Names {
@@ -142,6 +161,17 @@ impl<'a, F: Float> Compressed<'a, F> {
         Ok(())
     }
 
+    /// Every stored entry as `(lane, index, value)`, lane by lane and in index
+    /// order within a lane.
+    pub(super) fn for_each_stored(&self, mut visit: impl FnMut(usize, usize, F)) {
+        for lane in 0..self.n_lanes() {
+            let (indices, values) = self.lane(lane);
+            for (&index, &value) in indices.iter().zip(values) {
+                visit(lane, index, value);
+            }
+        }
+    }
+
     /// Lane `lane`'s stored indices and values.
     fn lane(&self, lane: usize) -> (&[usize], &[F]) {
         let range = self.offsets[lane]..self.offsets[lane + 1];
@@ -178,17 +208,8 @@ impl<'a, F: Float> Compressed<'a, F> {
     /// Every entry written out, absent ones as 0 or NaN, one lane per row of
     /// the result: CSR's shape, and the transpose of CSC's.
     pub(super) fn to_dense_by_lanes(&self) -> Array2<F> {
-        let fill = match self.absent {
-            Absent::Zero => F::zero(),
-            Absent::Missing => F::nan(),
-        };
-        let mut dense = Array2::from_elem((self.n_lanes(), self.lane_len), fill);
-        for lane in 0..self.n_lanes() {
-            let (indices, values) = self.lane(lane);
-            for (&index, &value) in indices.iter().zip(values) {
-                dense[[lane, index]] = value;
-            }
-        }
+        let mut dense = Array2::from_elem((self.n_lanes(), self.lane_len), self.absent.value());
+        self.for_each_stored(|lane, index, value| dense[[lane, index]] = value);
         dense
     }
 }

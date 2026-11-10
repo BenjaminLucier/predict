@@ -7,6 +7,9 @@ use predict::dataset::{
     Union,
 };
 
+mod common;
+use common::{dense, only_dense};
+
 /// A 2 × 3 sparse matrix storing 7 at (0, 2) and 8 at (1, 0).
 fn sparse() -> CsrMatrix<'static> {
     CsrMatrix::new(3, vec![0, 1, 2], vec![2, 0], vec![7.0, 8.0]).unwrap()
@@ -42,8 +45,8 @@ fn the_parse_types_return_the_error_new_panics_with() {
     assert!(err.to_string().contains("the columns are not contiguous"));
     // The transpose of a row-major array is column-major, as a different matrix.
     let t = Dataset::from_col_major(ColMajorMatrix::new(x.t()).unwrap());
-    assert_eq!(t.to_dense(), array![[1.0, 3.0], [2.0, 4.0]]);
-    assert_eq!(t.to_dense().as_ptr(), x.as_ptr());
+    assert_eq!(dense(&t), array![[1.0, 3.0], [2.0, 4.0]]);
+    assert_eq!(only_dense(&t).as_ptr(), x.as_ptr());
 }
 
 #[test]
@@ -53,8 +56,8 @@ fn new_borrows_a_view_of_some_columns_without_copying() {
     let x = array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
     let view = x.slice(s![.., 1..]);
     let data = Dataset::new(view);
-    assert_eq!(data.to_dense(), array![[2.0, 3.0], [5.0, 6.0]]);
-    assert_eq!(data.to_dense().as_ptr(), view.as_ptr());
+    assert_eq!(dense(&data), array![[2.0, 3.0], [5.0, 6.0]]);
+    assert_eq!(only_dense(&data).as_ptr(), view.as_ptr());
 }
 
 #[test]
@@ -90,7 +93,7 @@ fn new_refuses_a_view_that_skips_columns() {
 fn an_explicit_copy_into_row_major_order_is_accepted() {
     let x = Array2::from_shape_vec((2, 2).f(), vec![1.0, 3.0, 2.0, 4.0]).unwrap();
     let data = Dataset::new(x.as_standard_layout());
-    assert_eq!(data.to_dense(), array![[1.0, 2.0], [3.0, 4.0]]);
+    assert_eq!(dense(&data), array![[1.0, 2.0], [3.0, 4.0]]);
 }
 
 // --- Stacking ------------------------------------------------------------------
@@ -122,7 +125,7 @@ fn stacking_column_layouts_keeps_cols_and_mixing_orientations_mixes() {
     let col_major = || Dataset::from_col_major(ColMajorMatrix::new(&f).unwrap());
     let both: Dataset<'_, f64, Blocks<'_, f64, Cols, MixedDensity>> =
         col_major().hstack(Dataset::from_csc(csc())).unwrap();
-    assert_eq!(both.to_dense(), array![[0.0, 0.0], [0.0, 3.0]]);
+    assert_eq!(dense(&both), array![[0.0, 0.0], [0.0, 3.0]]);
 
     let x = array![[1.0], [2.0]];
     let _: Dataset<'_, f64, Blocks<'_, f64, MixedOrientation, Dense>> =

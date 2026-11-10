@@ -3,6 +3,7 @@
 
 mod block;
 mod compressed;
+mod convert;
 mod csc;
 mod csr;
 mod dense;
@@ -14,6 +15,7 @@ use std::marker::PhantomData;
 
 use ndarray::{ArrayBase, ArrayView, ArrayView1, CowArray, CowRepr, Ix1, Ix2};
 
+pub use block::BlockView;
 pub use compressed::Absent;
 pub use csc::CscMatrix;
 pub use csr::CsrMatrix;
@@ -281,14 +283,6 @@ impl<'a, F: Float, L: Layout<'a, F>, S: State, Y: TargetState> Dataset<'a, F, L,
         }
     }
 
-    /// The features as one dense matrix: borrowed when they are stored as a
-    /// single dense block, as a dataset made with [`new`](Dataset::new) is, and
-    /// assembled into an owned matrix otherwise. Sparse entries that aren't
-    /// stored are written out as 0, or as NaN when they mean missing.
-    pub fn to_dense(&self) -> CowArray<'_, F, Ix2> {
-        self.features.to_dense()
-    }
-
     /// The number of rows.
     pub fn n_samples(&self) -> usize {
         self.features.n_rows()
@@ -369,6 +363,10 @@ impl<'a, F: Float, O: Orientation, D: Density, S: State, Y: TargetState>
     ///   same number of rows.
     /// - `Conflict` with `context = "hstack"` if `right` has sample weights:
     ///   attach weights to the stacked dataset instead.
+    /// - `Conflict` with `context = "hstack"` if both sides have sparse blocks
+    ///   whose entries that aren't stored mean different things (see
+    ///   [`Absent`]): give them the same meaning first, with
+    ///   [`with_absent`](Dataset::with_absent) or `CsrMatrix::with_absent`.
     #[expect(
         clippy::type_complexity,
         reason = "the result's layout is spelled out so it reads as the union rule"
@@ -389,11 +387,139 @@ impl<'a, F: Float, O: Orientation, D: Density, S: State, Y: TargetState>
                     .to_string(),
             });
         }
+        if let (Some(left), Some(right)) = (self.features.absent(), right.features.absent())
+            && left != right
+        {
+            return Err(PredictError::Conflict {
+                context: "hstack",
+                reason: format!(
+                    "the left side's sparse entries that aren't stored mean {left:?} and \
+                     the right side's {right:?}; give both the same meaning with `with_absent`"
+                ),
+            });
+        }
         Ok(Dataset::from_parts(
             self.features.append(right.features),
             self.targets,
             self.sample_weights,
         ))
+    }
+
+    /// Every block of features, borrowed, in column order: never copies. A dense
+    /// block is an `ArrayView2`, a sparse one the `CsrMatrix` or `CscMatrix`
+    /// itself. To see every value as one dense matrix, convert first, with
+    /// [`into_dense_row_major`](Dataset::into_dense_row_major), whose result is
+    /// one block.
+    ///
+    /// ```
+    /// use ndarray::array;
+    /// use predict::Dataset;
+    /// use predict::dataset::BlockView;
+    ///
+    /// let x = array![[1.0, 2.0], [3.0, 4.0]];
+    /// let data = Dataset::new(&x);
+    /// assert_eq!(data.blocks().len(), 1);
+    /// if let Some(BlockView::DenseRowMajor(view)) = data.blocks().next() {
+    ///     assert_eq!(view.as_ptr(), x.as_ptr()); // the caller's array, not a copy
+    /// }
+    /// ```
+    pub fn blocks(&self) -> impl ExactSizeIterator<Item = BlockView<'_, F>> {
+        self.features.views()
+    }
+
+    /// The features as one row-major dense matrix: absent sparse entries are
+    /// written as what they mean, 0 or NaN. Moves the matrix, without copying,
+    /// when it already is one row-major block; copies it into a new matrix
+    /// otherwise. The state, targets and weights are kept: the values are the
+    /// same, only stored differently.
+    pub fn into_dense_row_major(self) -> Dataset<'a, F, DenseRowMajor<'a, F>, S, Y> {
+        let n_rows = self.n_samples();
+        let x = convert::into_dense(self.features.into_blocks(), n_rows, false);
+        Dataset::from_parts(
+            DenseRowMajor::dense_row_major(x),
+            self.targets,
+            self.sample_weights,
+        )
+    }
+
+    /// The features as one column-major dense matrix, as
+    /// [`into_dense_row_major`](Dataset::into_dense_row_major) does with each
+    /// column contiguous instead.
+    pub fn into_dense_col_major(self) -> Dataset<'a, F, DenseColMajor<'a, F>, S, Y> {
+        let n_rows = self.n_samples();
+        let x = convert::into_dense(self.features.into_blocks(), n_rows, true);
+        Dataset::from_parts(
+            DenseColMajor::dense_col_major(x),
+            self.targets,
+            self.sample_weights,
+        )
+    }
+
+    /// The features as one CSR matrix, its entries that aren't stored meaning
+    /// what the dataset's sparse blocks' do, or 0 without any: see
+    /// [`into_csr_with`](Dataset::into_csr_with).
+    pub fn into_csr(self) -> Dataset<'a, F, SparseRowMajor<'a, F>, S, Y> {
+        let absent = self.features.absent().unwrap_or_default();
+        self.into_csr_with(absent)
+    }
+
+    /// The features as one CSR matrix whose entries that aren't stored mean
+    /// `absent`. Every value is kept: a value `absent` stands for (0, or NaN for
+    /// [`Absent::Missing`]) is left out, and every other is stored, including
+    /// those a sparse block left out with a different meaning, so converting a
+    /// mostly-zero matrix to `Missing` stores its zeros.
+    ///
+    /// Moves the matrix, without copying, when it already is one CSR block with
+    /// that meaning; builds a new one otherwise. The state, targets and weights
+    /// are kept.
+    pub fn into_csr_with(self, absent: Absent) -> Dataset<'a, F, SparseRowMajor<'a, F>, S, Y> {
+        let n_rows = self.n_samples();
+        let m = convert::into_csr(self.features.into_blocks(), n_rows, absent);
+        Dataset::from_parts(SparseRowMajor::csr(m), self.targets, self.sample_weights)
+    }
+
+    /// The features as one CSC matrix: [`into_csr`](Dataset::into_csr) column
+    /// by column.
+    pub fn into_csc(self) -> Dataset<'a, F, SparseColMajor<'a, F>, S, Y> {
+        let absent = self.features.absent().unwrap_or_default();
+        self.into_csc_with(absent)
+    }
+
+    /// The features as one CSC matrix whose entries that aren't stored mean
+    /// `absent`: [`into_csr_with`](Dataset::into_csr_with) column by column.
+    pub fn into_csc_with(self, absent: Absent) -> Dataset<'a, F, SparseColMajor<'a, F>, S, Y> {
+        let n_rows = self.n_samples();
+        let m = convert::into_csc(self.features.into_blocks(), n_rows, absent);
+        Dataset::from_parts(SparseColMajor::csc(m), self.targets, self.sample_weights)
+    }
+}
+
+impl<'a, F: Float, O: Orientation, D: Density, Y: TargetState>
+    Dataset<'a, F, Blocks<'a, F, O, D>, Unchecked, Y>
+{
+    /// Give every sparse block's entries that aren't stored the meaning
+    /// `absent`, without copying anything: the stored entries stay, and what
+    /// the rest stand for changes. Dense blocks are kept as they are.
+    ///
+    /// This changes the values, so it exists only before validation: a
+    /// `Finite` dataset given [`Absent::Missing`] would hold NaN. To keep the
+    /// values and change how they are stored instead, use
+    /// [`into_csr_with`](Dataset::into_csr_with).
+    ///
+    /// ```compile_fail
+    /// use predict::Dataset;
+    /// use predict::dataset::{Absent, CsrMatrix};
+    ///
+    /// let m = CsrMatrix::new(2, vec![0, 1], vec![0], vec![1.0]).unwrap();
+    /// let data = Dataset::from_csr(m).validate_finite().unwrap();
+    /// let missing = data.with_absent(Absent::Missing); // error: only on `Unchecked`
+    /// ```
+    pub fn with_absent(self, absent: Absent) -> Self {
+        Dataset::from_parts(
+            self.features.with_absent(absent),
+            self.targets,
+            self.sample_weights,
+        )
     }
 }
 

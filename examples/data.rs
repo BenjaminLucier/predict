@@ -1,8 +1,12 @@
 //! The feature states, targets, weights and dense and sparse features of a `Dataset`. Run with
 //! `cargo run --example data`.
 
+use ndarray::ArrayView2;
 use ndarray::{Array2, ShapeBuilder, array};
-use predict::dataset::{Blocks, ColMajorMatrix, CscMatrix, CsrMatrix, Finite, MixedDensity, Rows};
+use predict::dataset::{
+    BlockView, Blocks, ColMajorMatrix, CscMatrix, CsrMatrix, DenseRowMajor, Finite, MixedDensity,
+    Rows, State,
+};
 use predict::{Dataset, PredictError, Result};
 
 fn main() -> Result<()> {
@@ -77,10 +81,13 @@ fn main() -> Result<()> {
     let documents = Dataset::from_csr(counts).validate_finite()?;
     // ANCHOR_END: sparse
     println!(
-        "{} documents, {} words: {}",
+        "{} documents, {} words, {} stored",
         documents.n_samples(),
         documents.n_features(),
-        documents.to_dense()
+        match documents.blocks().next() {
+            Some(BlockView::Csr(m)) => m.n_stored(),
+            _ => unreachable!("from_csr makes one CSR block"),
+        }
     );
 
     // ANCHOR: csc
@@ -91,7 +98,12 @@ fn main() -> Result<()> {
     let values = vec![5.0, 3.0, 2.0, 1.0];
     let by_word = Dataset::from_csc(CscMatrix::new(3, col_offsets, row_indices, values)?);
     // ANCHOR_END: csc
-    assert_eq!(by_word.to_dense(), documents.to_dense());
+    let counts = array![
+        [5.0, 0.0, 0.0, 1.0],
+        [0.0, 0.0, 2.0, 0.0],
+        [0.0, 3.0, 0.0, 0.0]
+    ];
+    assert_eq!(view(&by_word.into_dense_row_major()), counts);
 
     // ANCHOR: col_major
     // A column-major (Fortran-order) array, as some file formats and libraries
@@ -99,7 +111,7 @@ fn main() -> Result<()> {
     let mut fortran = Array2::zeros((2, 2).f());
     fortran.assign(&array![[1.0, 2.0], [3.0, 4.0]]);
     let by_column = Dataset::from_col_major(ColMajorMatrix::new(&fortran)?);
-    assert_eq!(by_column.to_dense(), array![[1.0, 2.0], [3.0, 4.0]]);
+    assert_eq!(by_column.blocks().len(), 1);
     // ANCHOR_END: col_major
 
     // ANCHOR: hstack
@@ -112,11 +124,26 @@ fn main() -> Result<()> {
             .hstack(documents)?;
     // ANCHOR_END: hstack
     println!(
-        "{} documents, {} features: {}",
+        "{} documents, {} features in {} blocks",
         features.n_samples(),
         features.n_features(),
-        features.to_dense()
+        features.blocks().len()
     );
 
+    // ANCHOR: convert
+    // A solver that needs one row-major matrix: the conversion is written out,
+    // and it is the only place the features are copied.
+    let dense: Dataset<'_, f64, DenseRowMajor<'_>, Finite> = features.into_dense_row_major();
+    // ANCHOR_END: convert
+    println!("as one matrix: {}", view(&dense));
+
     Ok(())
+}
+
+/// The one dense block of a dataset converted to `DenseRowMajor`, borrowed.
+fn view<'b, 'a, S: State>(data: &'b Dataset<'a, f64, DenseRowMajor<'a>, S>) -> ArrayView2<'b, f64> {
+    match data.blocks().next() {
+        Some(BlockView::DenseRowMajor(x)) => x,
+        _ => unreachable!("a conversion makes one block"),
+    }
 }

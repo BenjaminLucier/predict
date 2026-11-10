@@ -2,6 +2,9 @@ use ndarray::{Array2, array};
 use predict::dataset::{Absent, Blocks, CsrMatrix, Finite, MixedDensity, NoInfinity, Rows};
 use predict::{Dataset, PredictError};
 
+mod common;
+use common::dense;
+
 /// A 2 × 3 sparse matrix storing 7 at (0, 2) and 8 at (1, 0).
 fn sparse() -> CsrMatrix<'static> {
     CsrMatrix::new(3, vec![0, 1, 2], vec![2, 0], vec![7.0, 8.0]).unwrap()
@@ -15,8 +18,7 @@ fn several_dense_blocks_read_as_one_matrix() {
     let data = Dataset::new(&a).hstack(Dataset::new(&b)).unwrap();
     assert_eq!((data.n_samples(), data.n_features()), (2, 3));
 
-    let dense = data.to_dense();
-    assert!(dense.is_owned());
+    let dense = dense(&data);
     assert_eq!(dense, array![[1.0, 3.0, 4.0], [2.0, 5.0, 6.0]]);
 }
 
@@ -28,7 +30,7 @@ fn dense_and_sparse_read_as_one_matrix() {
         .unwrap();
     assert_eq!((data.n_samples(), data.n_features()), (2, 5));
     assert_eq!(
-        data.to_dense(),
+        dense(&data),
         array![[1.0, 2.0, 0.0, 0.0, 7.0], [3.0, 4.0, 8.0, 0.0, 0.0]]
     );
 }
@@ -44,8 +46,8 @@ fn stacking_keeps_column_order_however_it_is_grouped() {
     let right_first = Dataset::new(&a)
         .hstack(Dataset::new(&b).hstack(Dataset::new(&c)).unwrap())
         .unwrap();
-    assert_eq!(left_first.to_dense(), array![[1.0, 2.0, 3.0]]);
-    assert_eq!(right_first.to_dense(), left_first.to_dense());
+    assert_eq!(dense(&left_first), array![[1.0, 2.0, 3.0]]);
+    assert_eq!(dense(&right_first), dense(&left_first));
 }
 
 #[test]
@@ -168,4 +170,45 @@ fn rows_are_checked_before_weights() {
         .unwrap();
     let err = Dataset::new(&a).hstack(weighted).unwrap_err();
     assert!(matches!(err, PredictError::ShapeMismatch { .. }));
+}
+
+#[test]
+fn sparse_sides_with_different_absent_meanings_conflict() {
+    let x = array![[1.0], [2.0]];
+    let left = Dataset::new(&x)
+        .hstack(Dataset::from_csr(sparse()))
+        .unwrap();
+    let missing = Dataset::from_csr(sparse().with_absent(Absent::Missing));
+    let err = left.hstack(missing).unwrap_err();
+    assert!(matches!(
+        err,
+        PredictError::Conflict {
+            context: "hstack",
+            ..
+        }
+    ));
+    assert!(err.to_string().contains("with_absent"));
+}
+
+#[test]
+fn dense_never_conflicts_with_a_sparse_meaning() {
+    let x = array![[1.0], [2.0]];
+    let missing = Dataset::from_csr(sparse().with_absent(Absent::Missing));
+    assert!(Dataset::new(&x).hstack(missing).is_ok());
+}
+
+#[test]
+fn absent_meanings_are_checked_after_weights() {
+    let missing = Dataset::from_csr(sparse().with_absent(Absent::Missing))
+        .with_sample_weights(array![1.0, 1.0])
+        .unwrap();
+    let err = Dataset::from_csr(sparse()).hstack(missing).unwrap_err();
+    assert!(err.to_string().contains("sample weights"));
+}
+
+#[test]
+fn with_absent_aligns_the_meanings_before_stacking() {
+    let missing = Dataset::from_csr(sparse().with_absent(Absent::Missing));
+    let aligned = Dataset::from_csr(sparse()).with_absent(Absent::Missing);
+    assert!(aligned.hstack(missing).is_ok());
 }

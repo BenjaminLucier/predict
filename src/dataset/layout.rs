@@ -5,15 +5,14 @@
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
-use ndarray::{ArrayView2, Axis, CowArray, Ix2};
+use ndarray::{CowArray, Ix2};
 
-use super::block::Block;
-use super::{CscMatrix, CsrMatrix};
+use super::block::{Block, BlockView};
+use super::{Absent, CscMatrix, CsrMatrix};
 use crate::{Float, Result};
 use sealed::Sealed;
 
 pub(super) mod sealed {
-    use ndarray::{CowArray, Ix2};
 
     use crate::{Float, Result};
 
@@ -33,7 +32,6 @@ pub(super) mod sealed {
             context: &'static str,
             is_rejected: impl Fn(F) -> bool,
         ) -> Result<()>;
-        fn to_dense(&self) -> CowArray<'_, F, Ix2>;
     }
 }
 
@@ -203,6 +201,35 @@ impl<'a, F: Float, O: Orientation, D: Density> Blocks<'a, F, O, D> {
         }
     }
 
+    pub(super) fn into_blocks(self) -> Vec<Block<'a, F>> {
+        self.blocks
+    }
+
+    /// Every block, borrowed, in column order.
+    pub(super) fn views(&self) -> impl ExactSizeIterator<Item = BlockView<'_, F>> {
+        self.blocks.iter().map(Block::view)
+    }
+
+    /// What the sparse blocks' entries that aren't stored mean, or `None` with
+    /// no sparse block. Every sparse block agrees: `hstack` refuses to put
+    /// different meanings side by side.
+    pub(super) fn absent(&self) -> Option<Absent> {
+        self.blocks.iter().find_map(Block::absent)
+    }
+
+    /// Every sparse block's entries that aren't stored given the meaning
+    /// `absent`; dense blocks are kept as they are.
+    pub(super) fn with_absent(self, absent: Absent) -> Self {
+        Blocks {
+            blocks: self
+                .blocks
+                .into_iter()
+                .map(|block| block.with_absent(absent))
+                .collect(),
+            kinds: PhantomData,
+        }
+    }
+
     /// `right`'s blocks after these, with each marker the union of both sides'.
     pub(super) fn append<O2, D2>(
         mut self,
@@ -246,17 +273,6 @@ impl<'a, F: Float, O: Orientation, D: Density> sealed::Sealed<'a, F> for Blocks<
             col_offset += block.n_cols();
         }
         Ok(())
-    }
-
-    fn to_dense(&self) -> CowArray<'_, F, Ix2> {
-        if let [block] = self.blocks.as_slice() {
-            return block.to_dense();
-        }
-        let blocks: Vec<CowArray<'_, F, Ix2>> = self.blocks.iter().map(Block::to_dense).collect();
-        let views: Vec<ArrayView2<'_, F>> = blocks.iter().map(|block| block.view()).collect();
-        ndarray::concatenate(Axis(1), &views)
-            .expect("every block has n_samples rows")
-            .into()
     }
 }
 

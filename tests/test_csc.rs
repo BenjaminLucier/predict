@@ -2,6 +2,9 @@ use ndarray::{Array2, array};
 use predict::dataset::{Absent, CscMatrix, CsrMatrix, SparseColMajor};
 use predict::{Dataset, PredictError};
 
+mod common;
+use common::dense;
+
 /// The 3 × 4 example from the docs, column by column:
 ///
 /// ```text
@@ -30,7 +33,7 @@ fn the_example_reads_back_as_its_dense_matrix() {
     let data: Dataset<'_, f64, SparseColMajor<'_>> = Dataset::from_csc(m);
     assert_eq!((data.n_samples(), data.n_features()), (3, 4));
     assert_eq!(
-        data.to_dense(),
+        dense(&data),
         array![
             [5.0, 0.0, 0.0, 1.0],
             [0.0, 0.0, 2.0, 0.0],
@@ -49,15 +52,15 @@ fn csc_and_csr_of_the_same_matrix_read_the_same() {
     )
     .unwrap();
     assert_eq!(
-        Dataset::from_csc(example()).to_dense(),
-        Dataset::from_csr(csr).to_dense()
+        dense(&Dataset::from_csc(example())),
+        dense(&Dataset::from_csr(csr))
     );
 }
 
 #[test]
 fn missing_absent_entries_read_as_nan() {
     let data = Dataset::from_csc(example().with_absent(Absent::Missing));
-    let dense = data.to_dense();
+    let dense = dense(&data);
     assert_eq!(dense[[0, 0]], 5.0);
     assert!(dense[[1, 0]].is_nan());
 }
@@ -156,7 +159,7 @@ fn targets_have_one_row_per_sparse_row() {
     ));
     let empty = CscMatrix::<f64>::new(0, vec![0], vec![], vec![]).unwrap();
     assert_eq!(
-        Dataset::from_csc(empty).to_dense(),
+        dense(&Dataset::from_csc(empty)),
         Array2::<f64>::zeros((0, 0))
     );
 }

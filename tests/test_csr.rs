@@ -2,6 +2,9 @@ use ndarray::{Array2, array};
 use predict::dataset::{Absent, CsrMatrix, Finite, SparseRowMajor};
 use predict::{Dataset, PredictError};
 
+mod common;
+use common::dense;
+
 /// The 3 × 4 example from the docs:
 ///
 /// ```text
@@ -29,8 +32,7 @@ fn the_example_reads_back_as_its_dense_matrix() {
 
     let data = Dataset::from_csr(m);
     assert_eq!((data.n_samples(), data.n_features()), (3, 4));
-    let dense = data.to_dense();
-    assert!(dense.is_owned());
+    let dense = dense(&data);
     assert_eq!(
         dense,
         array![
@@ -45,7 +47,7 @@ fn the_example_reads_back_as_its_dense_matrix() {
 fn missing_absent_entries_read_as_nan() {
     // (Absent zeros are checked by the example above.)
     let data = Dataset::from_csr(example().with_absent(Absent::Missing));
-    let dense = data.to_dense();
+    let dense = dense(&data);
     assert_eq!(dense[[0, 0]], 5.0);
     assert!(dense[[0, 1]].is_nan());
     assert_eq!(dense.iter().filter(|value| value.is_nan()).count(), 12 - 4);
@@ -331,5 +333,5 @@ fn targets_and_weights_have_one_row_per_sparse_row() {
         .validate_finite()
         .unwrap();
     assert_eq!(data.y().len(), 3);
-    let _: Array2<f64> = data.to_dense().into_owned();
+    let _: Array2<f64> = dense(&data);
 }

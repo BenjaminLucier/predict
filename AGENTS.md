@@ -79,10 +79,22 @@ at the root.
   `ShapeMismatch` / `Conflict`), copying and converting nothing; each axis of
   the result is the sealed `Union` of both sides' markers (same stays,
   different is mixed), so the result type depends only on the input types.
+  A third check refuses sparse blocks with different `Absent` on the two
+  sides (`Conflict`), so a dataset has at most one meaning. Conversions
+  (`src/dataset/convert.rs`): `into_dense_row_major` / `into_dense_col_major`
+  / `into_csr` / `into_csc` / `into_csr_with(absent)` / `into_csc_with(absent)`
+  take ownership and return one block of that kind, moving it when it already
+  is one, otherwise allocating once (sparse: counting sort over lanes, blocks
+  walked in their own order so indices arrive sorted). Values never change, so
+  `S`, targets and weights are kept; to sparse, a value is left out iff
+  `absent` stands for it. `with_absent` (only on `Unchecked`) relabels every
+  sparse block without copying.
   The left's targets and weights are kept. `Blocks::append`
-  `debug_assert!`s matching rows. Transformers return owned data. Estimators
-  read `to_dense()`, which borrows a single dense block and assembles
-  otherwise.
+  `debug_assert!`s matching rows. Transformers return owned data. The only read
+  of the features is `blocks()`: borrowed `BlockView`s (public,
+  `#[non_exhaustive]`: `ArrayView2` or `&CsrMatrix` / `&CscMatrix`), never a
+  copy; there is no `to_dense` (it would densify sparse data out of sight).
+  Tests read values through `tests/common` (`dense`, `only_dense`).
   Validation errors give the column across the whole dataset. `S` is a sealed `State`: `Unchecked`,
   `NoInfinity` (NaN allowed), `Finite`. `validate_no_infinity` /
   `validate_finite` scan once and move up; states never move down, and only the
@@ -115,8 +127,8 @@ at the root.
   lane indices `<` the lane length and strictly increasing (canonical form
   required). Validation scans lane by lane. Values are checked by `validate_*`.
   `Absent` (`#[non_exhaustive]`): `Zero` (default, scikit-learn) or `Missing`
-  (XGBoost); with `Missing`, absent entries are NaN for `to_dense` and
-  validation, so the matrix reaches `Finite` only if fully stored.
+  (XGBoost); with `Missing`, absent entries are NaN when converted to dense
+  and in validation, so the matrix reaches `Finite` only if fully stored.
 
 - **Errors** (`src/error.rs`, book: `errors.md`). One public enum,
   `PredictError` (`thiserror`, `#[non_exhaustive]`), and the alias `Result<T>`,

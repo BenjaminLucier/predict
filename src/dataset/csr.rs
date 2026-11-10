@@ -133,6 +133,11 @@ impl<'a, F: Float> CsrMatrix<'a, F> {
         }
     }
 
+    /// Every stored entry as `(row, col, value)`, row by row.
+    pub(super) fn for_each_stored(&self, visit: impl FnMut(usize, usize, F)) {
+        self.rows.for_each_stored(visit);
+    }
+
     /// The same matrix with every entry written out: absent ones as 0 or NaN.
     pub(super) fn to_dense(&self) -> Array2<F> {
         self.rows.to_dense_by_lanes()
