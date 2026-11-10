@@ -1,4 +1,5 @@
 use ndarray::{Array2, ShapeBuilder, array};
+use predict::dataset::ColMajorMatrix;
 use predict::{Dataset, Float, PredictError};
 
 #[test]
@@ -71,29 +72,37 @@ fn validate_finite_reports_the_first_bad_value() {
 }
 
 #[test]
-fn a_single_bad_value_is_located_in_either_layout() {
-    for x in [
-        Array2::<f64>::zeros((3, 2)),
-        Array2::<f64>::zeros((3, 2).f()),
-    ] {
-        let mut x = x;
-        x[[2, 1]] = f64::NAN;
-        let err = Dataset::new(&x).validate_finite().unwrap_err();
-        assert!(matches!(
-            err,
-            PredictError::NonFinite { row: 2, col: 1, .. }
-        ));
-    }
+fn a_single_bad_value_is_located_by_row_and_column() {
+    let mut x = Array2::<f64>::zeros((3, 2));
+    x[[2, 1]] = f64::NAN;
+    let err = Dataset::new(&x).validate_finite().unwrap_err();
+    assert!(matches!(
+        err,
+        PredictError::NonFinite { row: 2, col: 1, .. }
+    ));
 }
 
 #[test]
 fn with_several_bad_values_the_first_in_memory_is_reported() {
+    let mut x = Array2::<f64>::zeros((3, 2));
+    x[[2, 0]] = f64::NAN;
+    x[[0, 1]] = f64::NAN;
+    let err = Dataset::new(&x).validate_finite().unwrap_err();
+    assert!(matches!(
+        err,
+        PredictError::NonFinite { row: 0, col: 1, .. }
+    ));
+}
+
+#[test]
+fn a_column_major_array_is_scanned_in_its_memory_order() {
     // A 3x2 column-major array stores column 0 first, so (2, 0) comes before
     // (0, 1) in memory, although (0, 1) comes first reading row by row.
     let mut x = Array2::<f64>::zeros((3, 2).f());
     x[[0, 1]] = f64::NAN;
     x[[2, 0]] = f64::NAN;
-    let err = Dataset::new(&x).validate_finite().unwrap_err();
+    let data = Dataset::from_col_major(ColMajorMatrix::new(&x).unwrap());
+    let err = data.validate_finite().unwrap_err();
     assert!(matches!(
         err,
         PredictError::NonFinite { row: 2, col: 0, .. }

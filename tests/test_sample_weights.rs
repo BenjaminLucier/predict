@@ -1,5 +1,5 @@
 use ndarray::{Array1, Array2, array, s};
-use predict::dataset::{Blocks, Finite, NoInfinity, Targets, Unchecked};
+use predict::dataset::{DenseRowMajor, Finite, NoInfinity, Targets, Unchecked};
 use predict::{Dataset, Float, PredictError};
 
 // --- Uniform by default -----------------------------------------------------
@@ -55,7 +55,7 @@ fn a_column_of_a_table_can_be_the_weights() {
 #[test]
 fn owned_data_with_owned_weights_makes_a_static_dataset() {
     // Nothing is borrowed, so the dataset can leave the function that made it.
-    fn make() -> Dataset<'static, f64, Blocks<'static>, Unchecked, Targets<'static, f64>> {
+    fn make() -> Dataset<'static, f64, DenseRowMajor<'static>, Unchecked, Targets<'static, f64>> {
         Dataset::new(array![[1.0], [2.0]])
             .with_y(array![3.0, 4.0])
             .unwrap()

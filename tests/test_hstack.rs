@@ -1,5 +1,5 @@
 use ndarray::{Array2, array};
-use predict::dataset::{Absent, CsrMatrix, Finite, NoInfinity};
+use predict::dataset::{Absent, Blocks, CsrMatrix, Finite, MixedDensity, NoInfinity, Rows};
 use predict::{Dataset, PredictError};
 
 /// A 2 × 3 sparse matrix storing 7 at (0, 2) and 8 at (1, 0).
@@ -50,7 +50,7 @@ fn stacking_keeps_column_order_however_it_is_grouped() {
 
 #[test]
 fn an_owned_stacked_dataset_outlives_the_function_that_made_it() {
-    fn make() -> Dataset<'static> {
+    fn make() -> Dataset<'static, f64, Blocks<'static, f64, Rows, MixedDensity>> {
         Dataset::new(array![[1.0], [2.0]])
             .hstack(Dataset::from_csr(sparse()))
             .unwrap()

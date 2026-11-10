@@ -1,5 +1,5 @@
 use ndarray::{Array, Array1, Array2, Ix2, ShapeBuilder, array, s};
-use predict::dataset::{Blocks, Finite, NoInfinity, Target, TargetDim, Targets, Unchecked};
+use predict::dataset::{DenseRowMajor, Finite, NoInfinity, Target, TargetDim, Targets, Unchecked};
 use predict::{Dataset, Float, PredictError};
 
 // --- Borrowed or owned, never copied ---------------------------------------
@@ -84,8 +84,8 @@ fn datasets_shorten_like_references() {
         data
     }
     fn with_targets<'a>(
-        data: Dataset<'static, f64, Blocks<'static>, Unchecked, Targets<'static, f64>>,
-    ) -> Dataset<'a, f64, Blocks<'a>, Unchecked, Targets<'a, f64>> {
+        data: Dataset<'static, f64, DenseRowMajor<'static>, Unchecked, Targets<'static, f64>>,
+    ) -> Dataset<'a, f64, DenseRowMajor<'a>, Unchecked, Targets<'a, f64>> {
         data
     }
     let data = with_targets(Dataset::new(array![[1.0]]).with_y(array![2.0]).unwrap());
@@ -97,7 +97,7 @@ fn datasets_shorten_like_references() {
 fn owned_features_and_targets_make_a_static_dataset() {
     // Nothing is borrowed, so the dataset can leave the function that made it,
     // as a synthetic data generator needs.
-    fn make() -> Dataset<'static, f64, Blocks<'static>, Unchecked, Targets<'static, f64>> {
+    fn make() -> Dataset<'static, f64, DenseRowMajor<'static>, Unchecked, Targets<'static, f64>> {
         Dataset::new(array![[1.0], [2.0]])
             .with_y(array![3.0, 4.0])
             .unwrap()

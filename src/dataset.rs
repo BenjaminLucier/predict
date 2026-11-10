@@ -2,7 +2,10 @@
 //! targets and sample weights checked when they are attached.
 
 mod block;
+mod compressed;
+mod csc;
 mod csr;
+mod dense;
 mod layout;
 mod state;
 mod targets;
@@ -11,12 +14,16 @@ use std::marker::PhantomData;
 
 use ndarray::{ArrayBase, ArrayView, ArrayView1, CowArray, CowRepr, Ix1, Ix2};
 
-pub use csr::{Absent, CsrMatrix};
-pub use layout::{Blocks, Layout};
+pub use compressed::Absent;
+pub use csc::CscMatrix;
+pub use csr::CsrMatrix;
+pub use dense::{ColMajorMatrix, RowMajorMatrix};
+pub use layout::{
+    Blocks, Cols, Dense, DenseColMajor, DenseRowMajor, Density, Layout, MixedDensity,
+    MixedOrientation, Orientation, Rows, Sparse, SparseColMajor, SparseRowMajor, Union,
+};
 pub use state::{Finite, InfinityFree, NoInfinity, State, Unchecked};
 pub use targets::{NoTargets, Target, TargetDim, TargetState, Targets};
-
-use block::Block;
 
 use crate::error::check_len;
 use crate::{Float, PredictError, Result};
@@ -37,8 +44,8 @@ pub(crate) type CovariantCowArray<'a, A, D> = ArrayBase<CowRepr<'a, A>, D, A>;
 /// and sample weights.
 ///
 /// - `F` is the float type, `f64` by default.
-/// - `L` is how the features are laid out in memory: [`Blocks`], the only
-///   layout so far.
+/// - `L` is how the features are laid out in memory, a [`Blocks`] type:
+///   [`DenseRowMajor`] by default, as [`new`](Dataset::new) makes.
 /// - `S` is [`Unchecked`] when the dataset is created; the `validate_*` methods
 ///   check the values once and move it to [`NoInfinity`] or [`Finite`].
 /// - `Y` is [`NoTargets`] until [`with_y`](Dataset::with_y) attaches checked
@@ -73,7 +80,7 @@ pub(crate) type CovariantCowArray<'a, A, D> = ArrayBase<CowRepr<'a, A>, D, A>;
 pub struct Dataset<
     'a,
     F: Float = f64,
-    L: Layout<'a, F> = Blocks<'a, F>,
+    L: Layout<'a, F> = DenseRowMajor<'a, F>,
     S: State = Unchecked,
     Y: TargetState = NoTargets,
 > {
@@ -84,21 +91,67 @@ pub struct Dataset<
     state: PhantomData<S>,
 }
 
-impl<'a, F: Float> Dataset<'a, F, Blocks<'a, F>, Unchecked, NoTargets> {
-    /// Wrap a feature matrix, without copying it.
+impl<'a, F: Float> Dataset<'a, F, DenseRowMajor<'a, F>, Unchecked, NoTargets> {
+    /// Wrap a row-major feature matrix, without copying it: the everyday
+    /// constructor.
     ///
     /// Pass `&x` or `x.view()` to borrow the array, or `x` to move it in. A moved-in
     /// array is owned by the dataset, which then doesn't borrow anything, so it can
     /// be returned from a function as `Dataset<'static, ..>`.
+    ///
+    /// # Panics
+    ///
+    /// If a row of `x` isn't contiguous in memory. Arrays built with `array!`,
+    /// `zeros` or `from_shape_vec` always are, and so is a view of some of their
+    /// columns; a transposed view, a column-major (Fortran-order) array, or a
+    /// view that skips columns isn't. For an array whose layout you don't
+    /// control, check it with [`RowMajorMatrix::new`] and use
+    /// [`from_row_major`](Dataset::from_row_major).
     pub fn new(x: impl Into<CowArray<'a, F, Ix2>>) -> Self {
-        Dataset::from_parts(Blocks::one(Block::Dense(x.into())), NoTargets, None)
+        match RowMajorMatrix::new(x) {
+            Ok(x) => Dataset::from_row_major(x),
+            Err(err) => panic!("Dataset::new: {err}"),
+        }
     }
 
-    /// Wrap a sparse feature matrix, without copying it: borrowed or owned as
-    /// its arrays are. Its structure was checked when it was built; its values
-    /// are checked by the `validate_*` methods, as for a dense one.
+    /// Wrap a dense matrix whose rows were checked to be contiguous, without
+    /// copying it.
+    pub fn from_row_major(x: RowMajorMatrix<'a, F>) -> Self {
+        Dataset::from_parts(
+            DenseRowMajor::dense_row_major(x.into_inner()),
+            NoTargets,
+            None,
+        )
+    }
+}
+
+impl<'a, F: Float> Dataset<'a, F, DenseColMajor<'a, F>, Unchecked, NoTargets> {
+    /// Wrap a dense matrix whose columns were checked to be contiguous, without
+    /// copying it.
+    pub fn from_col_major(x: ColMajorMatrix<'a, F>) -> Self {
+        Dataset::from_parts(
+            DenseColMajor::dense_col_major(x.into_inner()),
+            NoTargets,
+            None,
+        )
+    }
+}
+
+impl<'a, F: Float> Dataset<'a, F, SparseRowMajor<'a, F>, Unchecked, NoTargets> {
+    /// Wrap a sparse feature matrix stored row by row, without copying it:
+    /// borrowed or owned as its arrays are. Its structure was checked when it
+    /// was built; its values are checked by the `validate_*` methods, as for a
+    /// dense one.
     pub fn from_csr(x: CsrMatrix<'a, F>) -> Self {
-        Dataset::from_parts(Blocks::one(Block::Csr(x)), NoTargets, None)
+        Dataset::from_parts(SparseRowMajor::csr(x), NoTargets, None)
+    }
+}
+
+impl<'a, F: Float> Dataset<'a, F, SparseColMajor<'a, F>, Unchecked, NoTargets> {
+    /// Wrap a sparse feature matrix stored column by column, without copying it,
+    /// as [`from_csr`](Dataset::from_csr) does for one stored row by row.
+    pub fn from_csc(x: CscMatrix<'a, F>) -> Self {
+        Dataset::from_parts(SparseColMajor::csc(x), NoTargets, None)
     }
 }
 
@@ -287,7 +340,9 @@ impl<'a, F: Float, L: Layout<'a, F>, S: State, Y: TargetState> Dataset<'a, F, L,
     }
 }
 
-impl<'a, F: Float, S: State, Y: TargetState> Dataset<'a, F, Blocks<'a, F>, S, Y> {
+impl<'a, F: Float, O: Orientation, D: Density, S: State, Y: TargetState>
+    Dataset<'a, F, Blocks<'a, F, O, D>, S, Y>
+{
     /// Place `right`'s features after these, as more columns of the same rows,
     /// without copying either: each block stays borrowed or owned as it was.
     /// Dense and sparse blocks can sit side by side; neither is converted.
@@ -314,7 +369,18 @@ impl<'a, F: Float, S: State, Y: TargetState> Dataset<'a, F, Blocks<'a, F>, S, Y>
     ///   same number of rows.
     /// - `Conflict` with `context = "hstack"` if `right` has sample weights:
     ///   attach weights to the stacked dataset instead.
-    pub fn hstack(self, right: Dataset<'a, F, Blocks<'a, F>, S>) -> Result<Self> {
+    #[expect(
+        clippy::type_complexity,
+        reason = "the result's layout is spelled out so it reads as the union rule"
+    )]
+    pub fn hstack<O2: Orientation, D2: Density>(
+        self,
+        right: Dataset<'a, F, Blocks<'a, F, O2, D2>, S>,
+    ) -> Result<Dataset<'a, F, Blocks<'a, F, O::Output, D::Output>, S, Y>>
+    where
+        O: Union<O2, Output: Orientation>,
+        D: Union<D2, Output: Density>,
+    {
         check_len("hstack", self.n_samples(), right.n_samples())?;
         if right.sample_weights.is_some() {
             return Err(PredictError::Conflict {

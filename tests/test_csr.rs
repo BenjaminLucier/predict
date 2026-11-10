@@ -1,5 +1,5 @@
 use ndarray::{Array2, array};
-use predict::dataset::{Absent, CsrMatrix, Finite};
+use predict::dataset::{Absent, CsrMatrix, Finite, SparseRowMajor};
 use predict::{Dataset, PredictError};
 
 /// The 3 × 4 example from the docs:
@@ -71,7 +71,7 @@ fn the_arrays_are_borrowed_or_moved_without_copying() {
 
 #[test]
 fn an_owned_sparse_dataset_outlives_the_function_that_made_it() {
-    fn make() -> Dataset<'static> {
+    fn make() -> Dataset<'static, f64, SparseRowMajor<'static>> {
         Dataset::from_csr(example())
             .with_sample_weights(array![1.0, 2.0, 1.0])
             .unwrap()

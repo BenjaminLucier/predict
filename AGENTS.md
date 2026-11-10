@@ -57,21 +57,32 @@ at the root.
   on ndarray's `NdFloat`, plus `Into<f64>`), default `f64`, as the first type
   parameter. `ndarray` is the public array type; `faer` stays internal.
 - **Dataset** (`src/dataset.rs`, book: `data.md`). `Dataset<'a, F = f64, L =
-  Blocks<'a, F>, S = Unchecked, Y = NoTargets>`. `L` is the layout, a sealed
-  `Layout<'a, F>` (`src/dataset/layout.rs`) holding the features in a plain
-  `features: L` field; its methods sit on a private supertrait, so outside code
-  can bound on it but not call or implement them. `Blocks`, the only layout so
-  far, stores the features as column blocks side by side (private `Block` in
-  `src/dataset/block.rs`: dense `CowArray` or sparse `CsrMatrix`), never empty,
-  each with `n_samples` rows. `new` takes `impl Into<CowArray>`, so `&x` or a
-  view borrows and `x` moves in, never copying, as one dense block; `from_csr`
-  makes one sparse block; both return `Blocks`. `hstack` (on `Blocks` only)
-  appends a right-hand dataset's blocks (same rows, same `S`, `NoTargets`, no
-  weights, else `ShapeMismatch` / `Conflict`), copying and converting nothing;
-  the left's targets and weights are kept. `Blocks::append`
-  `debug_assert!`s matching rows. Transformers return owned data. Storage
-  stays private: estimators read `to_dense()`, which borrows a single dense
-  block and assembles otherwise.
+  DenseRowMajor<'a, F>, S = Unchecked, Y = NoTargets>`. `L` is the layout, a
+  sealed `Layout<'a, F>` (`src/dataset/layout.rs`) held in a plain `features: L`
+  field; its methods sit on a private supertrait, so outside code can bound on
+  it but not call or implement them. Every layout is `Blocks<'a, F, O, D>`:
+  column blocks side by side (private `Block` in `src/dataset/block.rs`:
+  `DenseRowMajor` / `DenseColMajor` `CowArray`, `Csr`, `Csc`), never empty, each with `n_samples`
+  rows, 1..n of them (count is runtime, never typed). `O: Orientation` is
+  `Rows`, `Cols` or `MixedOrientation`; `D: Density` is `Dense`, `Sparse` or
+  `MixedDensity` (sealed zero-sized markers, a promise like `S`). Aliases:
+  `DenseRowMajor`, `DenseColMajor`, `SparseRowMajor`, `SparseColMajor`.
+  Dense memory order is parsed once into `RowMajorMatrix` / `ColMajorMatrix`
+  (`src/dataset/dense.rs`; `new` returns `Malformed`, `context = "x"`, unless
+  each row / column is contiguous: unit stride along it, the other stride at
+  least its length, one row or column always passes).
+  `from_row_major` / `from_col_major` / `from_csr` / `from_csc` are
+  infallible and make one block each, never copying; `new` takes `impl
+  Into<CowArray>` (`&x` or a view borrows, `x` moves in) and panics with the
+  `RowMajorMatrix` error. `hstack` appends a right-hand
+  dataset's blocks (same rows, same `S`, `NoTargets`, no weights, else
+  `ShapeMismatch` / `Conflict`), copying and converting nothing; each axis of
+  the result is the sealed `Union` of both sides' markers (same stays,
+  different is mixed), so the result type depends only on the input types.
+  The left's targets and weights are kept. `Blocks::append`
+  `debug_assert!`s matching rows. Transformers return owned data. Estimators
+  read `to_dense()`, which borrows a single dense block and assembles
+  otherwise.
   Validation errors give the column across the whole dataset. `S` is a sealed `State`: `Unchecked`,
   `NoInfinity` (NaN allowed), `Finite`. `validate_no_infinity` /
   `validate_finite` scan once and move up; states never move down, and only the
@@ -95,11 +106,14 @@ at the root.
   (finite, non-negative) at the first bad row. A positive total is checked in
   `fit`, not here.
 
-- **Sparse** (`src/dataset/csr.rs`, book: `data.md`). `CsrMatrix<'a, F>`:
-  `n_cols` plus `row_offsets`, `col_indices`, `values` as `Cow` slices (`usize`
-  indices). `new` checks structure only, in order: offsets (non-empty, start
-  at 0, non-decreasing), lengths, then per row columns `< n_cols` and strictly
-  increasing (canonical form required). Values are checked by `validate_*`.
+- **Sparse** (`src/dataset/csr.rs`, `csc.rs`, book: `data.md`). `CsrMatrix<'a,
+  F>` (`n_cols`, `row_offsets`, `col_indices`, `values`) and `CscMatrix<'a, F>`
+  (`n_rows`, `col_offsets`, `row_indices`, `values`) wrap one private
+  `Compressed` storage (`src/dataset/compressed.rs`: lanes of `Cow` slices,
+  `usize` indices; error names per wrapper). `new` checks structure only, in
+  order: offsets (non-empty, start at 0, non-decreasing), lengths, then per
+  lane indices `<` the lane length and strictly increasing (canonical form
+  required). Validation scans lane by lane. Values are checked by `validate_*`.
   `Absent` (`#[non_exhaustive]`): `Zero` (default, scikit-learn) or `Missing`
   (XGBoost); with `Missing`, absent entries are NaN for `to_dense` and
   validation, so the matrix reaches `Finite` only if fully stored.

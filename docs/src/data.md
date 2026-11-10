@@ -142,16 +142,57 @@ would, and owned features with owned targets can be `'static`.
 ## Storage
 
 Inside, a dataset stores its features as blocks of adjacent columns placed side
-by side, each with one row per sample, and each dense or sparse.
-`Dataset::new` makes a single dense block: your array, borrowed or owned.
-`Dataset::from_csr` makes a single sparse one. The blocks themselves are
-private, so they can gain other kinds without changing how a dataset is used.
+by side, each with one row per sample. The blocks themselves are private; what
+the type records is how they are laid out, because that decides which
+algorithms can read them without converting anything.
 
-How the features are laid out is part of the dataset's type, as its state is:
-`Dataset<'a, F, L, S, Y>`, where `L` is the layout. `Blocks` is the only
-layout so far and the default, so you only name it when you write out the
-state after it, as in `Dataset<'_, f64, Blocks<'_>, Finite>`, or leave it to
-inference with `_`.
+A layout has two parts. Its *orientation* says which way the values run in
+memory: each row contiguous (row-major) or each column contiguous
+(column-major). Reading along the contiguous direction is a run of adjacent
+values; reading across it jumps through memory, which for a sparse matrix means
+searching every row for one column. Its *density* says whether every entry is
+stored (dense) or only some (sparse). The four single-kind layouts have their
+own names:
+
+| | Rows contiguous | Columns contiguous |
+|---|---|---|
+| **Dense** | `DenseRowMajor` | `DenseColMajor` |
+| **Sparse** | `SparseRowMajor` (CSR) | `SparseColMajor` (CSC) |
+
+All four are `Blocks<'a, F, O, D>` with orientation `O` (`Rows` or `Cols`) and
+density `D` (`Dense` or `Sparse`). A dataset whose blocks differ along an axis
+has the mixed marker there: `MixedOrientation` or `MixedDensity`. The number of
+blocks is not part of the type: a `SparseRowMajor` dataset can hold several CSR
+blocks side by side.
+
+Each kind has a constructor that makes one block of it, borrowed or owned as
+you pass it, never copied:
+
+| Constructor | Takes | Makes |
+|---|---|---|
+| `Dataset::new` | an ndarray array | `DenseRowMajor` |
+| `Dataset::from_row_major` | a `RowMajorMatrix` | `DenseRowMajor` |
+| `Dataset::from_col_major` | a `ColMajorMatrix` | `DenseColMajor` |
+| `Dataset::from_csr` | a `CsrMatrix` | `SparseRowMajor` |
+| `Dataset::from_csc` | a `CscMatrix` | `SparseColMajor` |
+
+An ndarray array doesn't say in its type which way it is stored, so a dense
+array's memory order is checked once, when it is wrapped: `RowMajorMatrix::new`
+and `ColMajorMatrix::new` return `Malformed` if the rows, or the columns,
+aren't contiguous. `Dataset::new` is the everyday shortcut: it does the
+row-major check and panics if it fails. Arrays built with `array!`, `zeros` or
+`from_shape_vec` always pass, and so does a view of some of their columns; a
+transposed view or a column-major array doesn't. Wrap column-major data with
+`ColMajorMatrix`, or copy it into row-major order yourself with
+`x.as_standard_layout()`:
+
+```rust
+{{#rustdoc_include ../../examples/data.rs:col_major}}
+```
+
+`DenseRowMajor` is the default layout, so you name it only when you write out
+the state after it, as in `Dataset<'_, f64, DenseRowMajor<'_>, Finite>`, or
+leave it to inference with `_`.
 
 `to_dense()` returns the features as one matrix. For a single dense block, as
 `new` makes, it borrows that block, without copying; otherwise the blocks are
@@ -167,7 +208,12 @@ same rows, so dense and sparse features can sit in one dataset:
 ```
 
 Nothing is copied or converted: each block is moved into the result, borrowed
-or owned as it was, and a sparse block stays sparse. The columns keep their
+or owned as it was, and a sparse block stays sparse. The result's layout
+follows from the two sides' layouts, one axis at a time: where both sides
+agree, the result keeps it, and where they differ it is mixed. Above, both
+sides run by rows, one dense and one sparse, so the result is `Blocks<Rows,
+MixedDensity>`. Which layout you get never depends on sizes or on the
+machine, only on the types going in. The columns keep their
 order, left side first, so a bad value found by `validate_*` is reported at its
 column in the stacked dataset.
 
@@ -207,6 +253,17 @@ and reported at their row and column.
 
 Reading a row is one slice, so CSR suits work done row by row, such as
 predictions. Reading a column means looking through every row.
+
+A `CscMatrix` stores the same matrix the other way round: column $j$'s entries
+are positions `col_offsets[j]..col_offsets[j + 1]` of `row_indices`, their
+rows, and of `values`, with `n_rows` given separately. Its structure is checked
+the same way, with rows and columns swapped, and reading a column is one slice.
+CSC suits work done column by column, such as coordinate descent, which updates
+one feature's coefficient at a time:
+
+```rust
+{{#rustdoc_include ../../examples/data.rs:csc}}
+```
 
 ### What an absent entry means
 

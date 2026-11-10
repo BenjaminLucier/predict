@@ -1,8 +1,8 @@
 //! The feature states, targets, weights and dense and sparse features of a `Dataset`. Run with
 //! `cargo run --example data`.
 
-use ndarray::array;
-use predict::dataset::{CsrMatrix, Finite};
+use ndarray::{Array2, ShapeBuilder, array};
+use predict::dataset::{Blocks, ColMajorMatrix, CscMatrix, CsrMatrix, Finite, MixedDensity, Rows};
 use predict::{Dataset, PredictError, Result};
 
 fn main() -> Result<()> {
@@ -83,12 +83,33 @@ fn main() -> Result<()> {
         documents.to_dense()
     );
 
+    // ANCHOR: csc
+    // The same word counts, column by column: word 0 appears 5 times in
+    // document 0, word 1 3 times in document 2, and so on.
+    let col_offsets = vec![0, 1, 2, 3, 4];
+    let row_indices = vec![0, 2, 1, 0];
+    let values = vec![5.0, 3.0, 2.0, 1.0];
+    let by_word = Dataset::from_csc(CscMatrix::new(3, col_offsets, row_indices, values)?);
+    // ANCHOR_END: csc
+    assert_eq!(by_word.to_dense(), documents.to_dense());
+
+    // ANCHOR: col_major
+    // A column-major (Fortran-order) array, as some file formats and libraries
+    // produce: wrapping checks its memory order once, and copies nothing.
+    let mut fortran = Array2::zeros((2, 2).f());
+    fortran.assign(&array![[1.0, 2.0], [3.0, 4.0]]);
+    let by_column = Dataset::from_col_major(ColMajorMatrix::new(&fortran)?);
+    assert_eq!(by_column.to_dense(), array![[1.0, 2.0], [3.0, 4.0]]);
+    // ANCHOR_END: col_major
+
     // ANCHOR: hstack
     // Each document's length in words: a dense column, beside the sparse counts.
     let lengths = array![[120.0], [80.0], [45.0]];
-    let features = Dataset::new(&lengths)
-        .validate_finite()?
-        .hstack(documents)?;
+    // Both sides run by rows; one is dense and one sparse.
+    let features: Dataset<'_, f64, Blocks<'_, f64, Rows, MixedDensity>, Finite> =
+        Dataset::new(&lengths)
+            .validate_finite()?
+            .hstack(documents)?;
     // ANCHOR_END: hstack
     println!(
         "{} documents, {} features: {}",
