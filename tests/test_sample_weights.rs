@@ -1,5 +1,5 @@
 use ndarray::{Array1, Array2, array, s};
-use predict::dataset::{Finite, NoInfinity, Targets, Unchecked};
+use predict::dataset::{Blocks, Finite, NoInfinity, Targets, Unchecked};
 use predict::{Dataset, Float, PredictError};
 
 // --- Uniform by default -----------------------------------------------------
@@ -55,7 +55,7 @@ fn a_column_of_a_table_can_be_the_weights() {
 #[test]
 fn owned_data_with_owned_weights_makes_a_static_dataset() {
     // Nothing is borrowed, so the dataset can leave the function that made it.
-    fn make() -> Dataset<'static, f64, Unchecked, Targets<'static, f64>> {
+    fn make() -> Dataset<'static, f64, Blocks<'static>, Unchecked, Targets<'static, f64>> {
         Dataset::new(array![[1.0], [2.0]])
             .with_y(array![3.0, 4.0])
             .unwrap()
@@ -210,7 +210,7 @@ fn weights_targets_and_the_feature_state_are_independent() {
     let (y, w) = (array![0_usize, 1], array![1.0, 2.0]);
 
     // Weights before targets, then validation: all kept as they were.
-    let data: Dataset<'_, _, NoInfinity, Targets<'_, usize>> = Dataset::new(&x)
+    let data: Dataset<'_, _, _, NoInfinity, Targets<'_, usize>> = Dataset::new(&x)
         .with_sample_weights(&w)
         .unwrap()
         .with_y(&y)
@@ -243,7 +243,7 @@ fn weights_targets_and_the_feature_state_are_independent() {
 
     // All the way to `Finite`, weights kept.
     let x = array![[1.0], [2.0]];
-    let data: Dataset<'_, _, Finite> = Dataset::new(&x)
+    let data: Dataset<'_, _, _, Finite> = Dataset::new(&x)
         .with_sample_weights(&w)
         .unwrap()
         .validate_finite()

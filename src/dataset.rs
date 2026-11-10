@@ -3,14 +3,16 @@
 
 mod block;
 mod csr;
+mod layout;
 mod state;
 mod targets;
 
 use std::marker::PhantomData;
 
-use ndarray::{ArrayBase, ArrayView, ArrayView1, ArrayView2, Axis, CowArray, CowRepr, Ix1, Ix2};
+use ndarray::{ArrayBase, ArrayView, ArrayView1, CowArray, CowRepr, Ix1, Ix2};
 
 pub use csr::{Absent, CsrMatrix};
+pub use layout::{Blocks, Layout};
 pub use state::{Finite, InfinityFree, NoInfinity, State, Unchecked};
 pub use targets::{NoTargets, Target, TargetDim, TargetState, Targets};
 
@@ -35,6 +37,8 @@ pub(crate) type CovariantCowArray<'a, A, D> = ArrayBase<CowRepr<'a, A>, D, A>;
 /// and sample weights.
 ///
 /// - `F` is the float type, `f64` by default.
+/// - `L` is how the features are laid out in memory: [`Blocks`], the only
+///   layout so far.
 /// - `S` is [`Unchecked`] when the dataset is created; the `validate_*` methods
 ///   check the values once and move it to [`NoInfinity`] or [`Finite`].
 /// - `Y` is [`NoTargets`] until [`with_y`](Dataset::with_y) attaches checked
@@ -63,40 +67,42 @@ pub(crate) type CovariantCowArray<'a, A, D> = ArrayBase<CowRepr<'a, A>, D, A>;
 ///
 /// let x = array![[1.0, 2.0]];
 /// let data = Dataset::new(&x).validate_finite().unwrap();
-/// let again = data.validate_finite(); // error: no method on `Dataset<_, _, Finite>`
+/// let again = data.validate_finite(); // error: no method on `Dataset<_, _, _, Finite>`
 /// ```
 #[derive(Debug, Clone)]
-pub struct Dataset<'a, F: Float = f64, S: State = Unchecked, Y: TargetState = NoTargets> {
-    // The features, as blocks of columns side by side, each with `n_samples`
-    // rows. Never empty: `new` and `from_csr` make one block, even for a matrix
-    // with no columns, and `hstack` only adds blocks with the same number of
-    // rows, so the row count is always the first block's.
-    blocks: Vec<Block<'a, F>>,
+pub struct Dataset<
+    'a,
+    F: Float = f64,
+    L: Layout<'a, F> = Blocks<'a, F>,
+    S: State = Unchecked,
+    Y: TargetState = NoTargets,
+> {
+    features: L,
     targets: Y,
     // `None` means every row weighs 1, without storing a column of ones.
     sample_weights: Option<CovariantCowArray<'a, F, Ix1>>,
     state: PhantomData<S>,
 }
 
-impl<'a, F: Float> Dataset<'a, F, Unchecked, NoTargets> {
+impl<'a, F: Float> Dataset<'a, F, Blocks<'a, F>, Unchecked, NoTargets> {
     /// Wrap a feature matrix, without copying it.
     ///
     /// Pass `&x` or `x.view()` to borrow the array, or `x` to move it in. A moved-in
     /// array is owned by the dataset, which then doesn't borrow anything, so it can
     /// be returned from a function as `Dataset<'static, ..>`.
     pub fn new(x: impl Into<CowArray<'a, F, Ix2>>) -> Self {
-        Dataset::from_parts(vec![Block::Dense(x.into())], NoTargets, None)
+        Dataset::from_parts(Blocks::one(Block::Dense(x.into())), NoTargets, None)
     }
 
     /// Wrap a sparse feature matrix, without copying it: borrowed or owned as
     /// its arrays are. Its structure was checked when it was built; its values
     /// are checked by the `validate_*` methods, as for a dense one.
     pub fn from_csr(x: CsrMatrix<'a, F>) -> Self {
-        Dataset::from_parts(vec![Block::Csr(x)], NoTargets, None)
+        Dataset::from_parts(Blocks::one(Block::Csr(x)), NoTargets, None)
     }
 }
 
-impl<'a, F: Float, S: State> Dataset<'a, F, S, NoTargets> {
+impl<'a, F: Float, L: Layout<'a, F>, S: State> Dataset<'a, F, L, S, NoTargets> {
     /// Attach targets, checking them as they are attached. Works in any feature
     /// state, without copying `y`: pass `&y` or `y.view()` to borrow it, or `y` to
     /// move it in.
@@ -133,7 +139,7 @@ impl<'a, F: Float, S: State> Dataset<'a, F, S, NoTargets> {
     pub fn with_y<T: Target, D: TargetDim>(
         self,
         y: impl Into<CowArray<'a, T, D>>,
-    ) -> Result<Dataset<'a, F, S, Targets<'a, T, D>>> {
+    ) -> Result<Dataset<'a, F, L, S, Targets<'a, T, D>>> {
         let y = y.into();
         let y_matrix = targets::as_output_matrix(y.view());
         check_len("y", self.n_samples(), y_matrix.nrows())?;
@@ -143,14 +149,14 @@ impl<'a, F: Float, S: State> Dataset<'a, F, S, NoTargets> {
         }
         targets::check(y_matrix)?;
         Ok(Dataset::from_parts(
-            self.blocks,
+            self.features,
             Targets { y },
             self.sample_weights,
         ))
     }
 }
 
-impl<'a, F: Float, Y: TargetState> Dataset<'a, F, Unchecked, Y> {
+impl<'a, F: Float, L: Layout<'a, F>, Y: TargetState> Dataset<'a, F, L, Unchecked, Y> {
     /// Scan every value once and move to `NoInfinity`: NaN (a missing value) is
     /// kept, ±infinity is rejected. Targets are kept as they are.
     ///
@@ -158,10 +164,11 @@ impl<'a, F: Float, Y: TargetState> Dataset<'a, F, Unchecked, Y> {
     ///
     /// `NonFinite` with `context = "validate_no_infinity"`, at the first infinity in
     /// memory order.
-    pub fn validate_no_infinity(self) -> Result<Dataset<'a, F, NoInfinity, Y>> {
-        self.reject_first("validate_no_infinity", |value| value.is_infinite())?;
+    pub fn validate_no_infinity(self) -> Result<Dataset<'a, F, L, NoInfinity, Y>> {
+        self.features
+            .reject_first("validate_no_infinity", |value| value.is_infinite())?;
         Ok(Dataset::from_parts(
-            self.blocks,
+            self.features,
             self.targets,
             self.sample_weights,
         ))
@@ -173,12 +180,12 @@ impl<'a, F: Float, Y: TargetState> Dataset<'a, F, Unchecked, Y> {
     ///
     /// `NonFinite` with `context = "validate_finite"`, at the first NaN or infinity
     /// in memory order.
-    pub fn validate_finite(self) -> Result<Dataset<'a, F, Finite, Y>> {
+    pub fn validate_finite(self) -> Result<Dataset<'a, F, L, Finite, Y>> {
         self.into_finite()
     }
 }
 
-impl<'a, F: Float, Y: TargetState> Dataset<'a, F, NoInfinity, Y> {
+impl<'a, F: Float, L: Layout<'a, F>, Y: TargetState> Dataset<'a, F, L, NoInfinity, Y> {
     /// Scan every value once and move to `Finite`. Infinity is already ruled out,
     /// so this finds NaN. Targets are kept as they are.
     ///
@@ -186,55 +193,35 @@ impl<'a, F: Float, Y: TargetState> Dataset<'a, F, NoInfinity, Y> {
     ///
     /// `NonFinite` with `context = "validate_finite"`, at the first NaN in memory
     /// order.
-    pub fn validate_finite(self) -> Result<Dataset<'a, F, Finite, Y>> {
+    pub fn validate_finite(self) -> Result<Dataset<'a, F, L, Finite, Y>> {
         self.into_finite()
     }
 }
 
-impl<'a, F: Float, S: State, Y: TargetState> Dataset<'a, F, S, Y> {
+impl<'a, F: Float, L: Layout<'a, F>, S: State, Y: TargetState> Dataset<'a, F, L, S, Y> {
     // The shared body of the two public `validate_finite`s. They exist only on the
     // states that can still move up, so calling it on `Finite` data doesn't compile.
-    fn into_finite(self) -> Result<Dataset<'a, F, Finite, Y>> {
-        self.reject_first("validate_finite", |value| !value.is_finite())?;
+    fn into_finite(self) -> Result<Dataset<'a, F, L, Finite, Y>> {
+        self.features
+            .reject_first("validate_finite", |value| !value.is_finite())?;
         Ok(Dataset::from_parts(
-            self.blocks,
+            self.features,
             self.targets,
             self.sample_weights,
         ))
     }
 
-    // `NonFinite` at the first value `is_rejected` picks out: blocks in column
-    // order, then memory order within a block, with the column counted across
-    // the whole dataset.
-    fn reject_first(&self, context: &'static str, is_rejected: impl Fn(F) -> bool) -> Result<()> {
-        let mut col_offset = 0;
-        for block in &self.blocks {
-            block.reject_first(context, col_offset, &is_rejected)?;
-            col_offset += block.n_cols();
-        }
-        Ok(())
-    }
-
     /// The one place a `Dataset` is assembled. `S` comes from the caller's return
     /// type, so this can produce any state without checking anything. It is
-    /// private because the caller is responsible for `S` being true of `blocks`,
-    /// `Y` of `targets`, `sample_weights` having been checked, and every block
-    /// having the same number of rows.
+    /// private because the caller is responsible for `S` being true of
+    /// `features`, `Y` of `targets`, and `sample_weights` having been checked.
     fn from_parts(
-        blocks: Vec<Block<'a, F>>,
+        features: L,
         targets: Y,
         sample_weights: Option<CovariantCowArray<'a, F, Ix1>>,
     ) -> Self {
-        // Only a bug in this crate can break this: the public constructors and
-        // `hstack` return an error first.
-        debug_assert!(
-            blocks
-                .first()
-                .is_some_and(|first| blocks.iter().all(|b| b.n_rows() == first.n_rows())),
-            "a dataset needs at least one block, all with the same number of rows"
-        );
         Dataset {
-            blocks,
+            features,
             targets,
             sample_weights,
             state: PhantomData,
@@ -246,24 +233,17 @@ impl<'a, F: Float, S: State, Y: TargetState> Dataset<'a, F, S, Y> {
     /// assembled into an owned matrix otherwise. Sparse entries that aren't
     /// stored are written out as 0, or as NaN when they mean missing.
     pub fn to_dense(&self) -> CowArray<'_, F, Ix2> {
-        if let [block] = self.blocks.as_slice() {
-            return block.to_dense();
-        }
-        let blocks: Vec<CowArray<'_, F, Ix2>> = self.blocks.iter().map(Block::to_dense).collect();
-        let views: Vec<ArrayView2<'_, F>> = blocks.iter().map(|block| block.view()).collect();
-        ndarray::concatenate(Axis(1), &views)
-            .expect("every block has n_samples rows")
-            .into()
+        self.features.to_dense()
     }
 
     /// The number of rows.
     pub fn n_samples(&self) -> usize {
-        self.blocks[0].n_rows()
+        self.features.n_rows()
     }
 
-    /// The number of columns, across all blocks.
+    /// The number of columns.
     pub fn n_features(&self) -> usize {
-        self.blocks.iter().map(Block::n_cols).sum()
+        self.features.n_cols()
     }
 
     /// The weight of each row, borrowed, or `None` when every row weighs 1.
@@ -275,7 +255,7 @@ impl<'a, F: Float, S: State, Y: TargetState> Dataset<'a, F, S, Y> {
     }
 }
 
-impl<'a, F: Float, S: State, Y: TargetState> Dataset<'a, F, S, Y> {
+impl<'a, F: Float, L: Layout<'a, F>, S: State, Y: TargetState> Dataset<'a, F, L, S, Y> {
     /// Set a weight per row, replacing any set before. Works in any feature state,
     /// before or after [`with_y`](Dataset::with_y), without copying `weights`: pass
     /// `&weights` or `weights.view()` to borrow them, or `weights` to move them in.
@@ -300,12 +280,14 @@ impl<'a, F: Float, S: State, Y: TargetState> Dataset<'a, F, S, Y> {
     pub fn with_sample_weights(self, weights: impl Into<CowArray<'a, F, Ix1>>) -> Result<Self> {
         let weights = checked_weights(self.n_samples(), weights.into())?;
         Ok(Dataset::from_parts(
-            self.blocks,
+            self.features,
             self.targets,
             Some(weights),
         ))
     }
+}
 
+impl<'a, F: Float, S: State, Y: TargetState> Dataset<'a, F, Blocks<'a, F>, S, Y> {
     /// Place `right`'s features after these, as more columns of the same rows,
     /// without copying either: each block stays borrowed or owned as it was.
     /// Dense and sparse blocks can sit side by side; neither is converted.
@@ -332,7 +314,7 @@ impl<'a, F: Float, S: State, Y: TargetState> Dataset<'a, F, S, Y> {
     ///   same number of rows.
     /// - `Conflict` with `context = "hstack"` if `right` has sample weights:
     ///   attach weights to the stacked dataset instead.
-    pub fn hstack(self, right: Dataset<'a, F, S>) -> Result<Self> {
+    pub fn hstack(self, right: Dataset<'a, F, Blocks<'a, F>, S>) -> Result<Self> {
         check_len("hstack", self.n_samples(), right.n_samples())?;
         if right.sample_weights.is_some() {
             return Err(PredictError::Conflict {
@@ -341,10 +323,8 @@ impl<'a, F: Float, S: State, Y: TargetState> Dataset<'a, F, S, Y> {
                     .to_string(),
             });
         }
-        let mut blocks = self.blocks;
-        blocks.extend(right.blocks);
         Ok(Dataset::from_parts(
-            blocks,
+            self.features.append(right.features),
             self.targets,
             self.sample_weights,
         ))
@@ -380,7 +360,9 @@ fn checked_weights<F: Float>(
     Ok(weights)
 }
 
-impl<'a, F: Float, S: State, T: Target, D: TargetDim> Dataset<'a, F, S, Targets<'a, T, D>> {
+impl<'a, F: Float, L: Layout<'a, F>, S: State, T: Target, D: TargetDim>
+    Dataset<'a, F, L, S, Targets<'a, T, D>>
+{
     /// The checked targets, borrowed: 1-D, or rows × outputs.
     pub fn y(&self) -> ArrayView<'_, T, D> {
         self.targets.y.view()

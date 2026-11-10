@@ -252,7 +252,7 @@ fn validation_reads_stored_values_at_their_position() {
     ));
 
     // Absent zeros are finite.
-    let finite: Dataset<'_, _, Finite> = Dataset::from_csr(example()).validate_finite().unwrap();
+    let finite: Dataset<'_, _, _, Finite> = Dataset::from_csr(example()).validate_finite().unwrap();
     assert_eq!(finite.n_samples(), 3);
 }
 

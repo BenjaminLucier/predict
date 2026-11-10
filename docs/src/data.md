@@ -144,8 +144,14 @@ would, and owned features with owned targets can be `'static`.
 Inside, a dataset stores its features as blocks of adjacent columns placed side
 by side, each with one row per sample, and each dense or sparse.
 `Dataset::new` makes a single dense block: your array, borrowed or owned.
-`Dataset::from_csr` makes a single sparse one. The storage is private, so it
-can gain other kinds of block without changing how a dataset is used.
+`Dataset::from_csr` makes a single sparse one. The blocks themselves are
+private, so they can gain other kinds without changing how a dataset is used.
+
+How the features are laid out is part of the dataset's type, as its state is:
+`Dataset<'a, F, L, S, Y>`, where `L` is the layout. `Blocks` is the only
+layout so far and the default, so you only name it when you write out the
+state after it, as in `Dataset<'_, f64, Blocks<'_>, Finite>`, or leave it to
+inference with `_`.
 
 `to_dense()` returns the features as one matrix. For a single dense block, as
 `new` makes, it borrows that block, without copying; otherwise the blocks are

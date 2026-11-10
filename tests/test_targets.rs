@@ -1,5 +1,5 @@
 use ndarray::{Array, Array1, Array2, Ix2, ShapeBuilder, array, s};
-use predict::dataset::{Finite, NoInfinity, Target, TargetDim, Targets, Unchecked};
+use predict::dataset::{Blocks, Finite, NoInfinity, Target, TargetDim, Targets, Unchecked};
 use predict::{Dataset, Float, PredictError};
 
 // --- Borrowed or owned, never copied ---------------------------------------
@@ -25,7 +25,7 @@ fn targets_are_attached_without_copying() {
 
     // Several outputs keep their rows × outputs shape.
     let y = array![[20.0, 0.5], [21.0, 0.6]];
-    let data: Dataset<'_, _, _, Targets<'_, f64, Ix2>> = Dataset::new(&x).with_y(&y).unwrap();
+    let data: Dataset<'_, _, _, _, Targets<'_, f64, Ix2>> = Dataset::new(&x).with_y(&y).unwrap();
     assert_eq!(data.y().as_ptr(), y.as_ptr());
     assert_eq!(data.y(), y);
 }
@@ -84,8 +84,8 @@ fn datasets_shorten_like_references() {
         data
     }
     fn with_targets<'a>(
-        data: Dataset<'static, f64, Unchecked, Targets<'static, f64>>,
-    ) -> Dataset<'a, f64, Unchecked, Targets<'a, f64>> {
+        data: Dataset<'static, f64, Blocks<'static>, Unchecked, Targets<'static, f64>>,
+    ) -> Dataset<'a, f64, Blocks<'a>, Unchecked, Targets<'a, f64>> {
         data
     }
     let data = with_targets(Dataset::new(array![[1.0]]).with_y(array![2.0]).unwrap());
@@ -97,7 +97,7 @@ fn datasets_shorten_like_references() {
 fn owned_features_and_targets_make_a_static_dataset() {
     // Nothing is borrowed, so the dataset can leave the function that made it,
     // as a synthetic data generator needs.
-    fn make() -> Dataset<'static, f64, Unchecked, Targets<'static, f64>> {
+    fn make() -> Dataset<'static, f64, Blocks<'static>, Unchecked, Targets<'static, f64>> {
         Dataset::new(array![[1.0], [2.0]])
             .with_y(array![3.0, 4.0])
             .unwrap()
@@ -304,11 +304,11 @@ fn targets_and_the_feature_state_are_independent() {
     let features = Dataset::new(&x).validate_no_infinity().unwrap();
     let err = features.clone().with_y(&bad_y).unwrap_err();
     assert!(matches!(err, PredictError::NonFinite { context: "y", .. }));
-    let data: Dataset<'_, _, NoInfinity, Targets<'_, f64>> = features.with_y(&y).unwrap();
+    let data: Dataset<'_, _, _, NoInfinity, Targets<'_, f64>> = features.with_y(&y).unwrap();
     assert_eq!(data.y().as_ptr(), y.as_ptr());
 
     // Attach, then validate: validation checks only `x` and keeps `y` as it was.
-    let data: Dataset<'_, _, NoInfinity, Targets<'_, f64>> = Dataset::new(&x)
+    let data: Dataset<'_, _, _, NoInfinity, Targets<'_, f64>> = Dataset::new(&x)
         .with_y(&y)
         .unwrap()
         .validate_no_infinity()
@@ -330,7 +330,7 @@ fn targets_and_the_feature_state_are_independent() {
     // All the way to `Finite`, with class targets.
     let x = array![[1.0], [2.0]];
     let classes = array![0_usize, 1];
-    let data: Dataset<'_, _, Finite, Targets<'_, usize>> = Dataset::new(&x)
+    let data: Dataset<'_, _, _, Finite, Targets<'_, usize>> = Dataset::new(&x)
         .with_y(&classes)
         .unwrap()
         .validate_finite()

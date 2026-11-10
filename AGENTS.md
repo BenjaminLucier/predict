@@ -56,18 +56,22 @@ at the root.
   regression targets is generic over `F: Float` (sealed; `f32` and `f64`, built
   on ndarray's `NdFloat`, plus `Into<f64>`), default `f64`, as the first type
   parameter. `ndarray` is the public array type; `faer` stays internal.
-- **Dataset** (`src/dataset.rs`, book: `data.md`). `Dataset<'a, F = f64, S =
-  Unchecked, Y = NoTargets>` stores the features as column blocks side by side
-  (private `Block` in `src/dataset/block.rs`: dense `CowArray` or sparse
-  `CsrMatrix`), never empty, each with `n_samples` rows. `new` takes `impl
-  Into<CowArray>`, so `&x` or a view borrows and `x` moves in, never copying,
-  as one dense block; `from_csr` makes one sparse block. `hstack` appends a
-  right-hand dataset's blocks (same rows, same `S`, `NoTargets`, no weights,
-  else `ShapeMismatch` / `Conflict`), copying and converting nothing; the
-  left's targets and weights are kept. `from_parts` `debug_assert!`s the block
-  invariant. Transformers return owned data. Storage stays private: estimators
-  read `to_dense()`, which borrows a single dense block and assembles
-  otherwise.
+- **Dataset** (`src/dataset.rs`, book: `data.md`). `Dataset<'a, F = f64, L =
+  Blocks<'a, F>, S = Unchecked, Y = NoTargets>`. `L` is the layout, a sealed
+  `Layout<'a, F>` (`src/dataset/layout.rs`) holding the features in a plain
+  `features: L` field; its methods sit on a private supertrait, so outside code
+  can bound on it but not call or implement them. `Blocks`, the only layout so
+  far, stores the features as column blocks side by side (private `Block` in
+  `src/dataset/block.rs`: dense `CowArray` or sparse `CsrMatrix`), never empty,
+  each with `n_samples` rows. `new` takes `impl Into<CowArray>`, so `&x` or a
+  view borrows and `x` moves in, never copying, as one dense block; `from_csr`
+  makes one sparse block; both return `Blocks`. `hstack` (on `Blocks` only)
+  appends a right-hand dataset's blocks (same rows, same `S`, `NoTargets`, no
+  weights, else `ShapeMismatch` / `Conflict`), copying and converting nothing;
+  the left's targets and weights are kept. `Blocks::append`
+  `debug_assert!`s matching rows. Transformers return owned data. Storage
+  stays private: estimators read `to_dense()`, which borrows a single dense
+  block and assembles otherwise.
   Validation errors give the column across the whole dataset. `S` is a sealed `State`: `Unchecked`,
   `NoInfinity` (NaN allowed), `Finite`. `validate_no_infinity` /
   `validate_finite` scan once and move up; states never move down, and only the

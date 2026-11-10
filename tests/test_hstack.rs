@@ -101,10 +101,10 @@ fn a_missing_sparse_entry_is_reported_at_its_column_in_the_dataset() {
 fn stacking_keeps_the_state_of_both_sides() {
     let (a, b) = (array![[1.0], [2.0]], array![[f64::NAN], [3.0]]);
     let finite = |x| Dataset::new(x).validate_finite().unwrap();
-    let _: Dataset<'_, f64, Finite> = finite(&a).hstack(finite(&a)).unwrap();
+    let _: Dataset<'_, f64, _, Finite> = finite(&a).hstack(finite(&a)).unwrap();
 
     let no_infinity = |x| Dataset::new(x).validate_no_infinity().unwrap();
-    let _: Dataset<'_, f64, NoInfinity> = no_infinity(&a).hstack(no_infinity(&b)).unwrap();
+    let _: Dataset<'_, f64, _, NoInfinity> = no_infinity(&a).hstack(no_infinity(&b)).unwrap();
 }
 
 // --- Targets and weights -----------------------------------------------------------

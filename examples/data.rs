@@ -13,7 +13,7 @@ fn main() -> Result<()> {
     let data = Dataset::new(&x);
 
     // One scan; the type now records that every value is finite.
-    let data: Dataset<'_, _, Finite> = data.validate_finite()?;
+    let data: Dataset<'_, _, _, Finite> = data.validate_finite()?;
     // ANCHOR_END: validate
     println!(
         "{} rows, {} features, all finite",
