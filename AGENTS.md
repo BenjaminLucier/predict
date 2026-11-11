@@ -146,6 +146,31 @@ at the root.
   nothing, so a dataset can be transformed and kept. `from_parts`
   `debug_assert!`s targets and weights have one row per sample. The example
   estimator (`examples/estimator.rs`, nearest centroid) is not in the library.
+- **Seed** (`src/seed.rs`, private, `Seed` re-exported at the root).
+  `#[non_exhaustive] enum Seed { Entropy (default), Fixed(u64) }`; configs
+  store one and set it with `with_seed(u64)`. Crate-private `rng()` gives a
+  `rand` `Xoshiro256PlusPlus` (fast, the same on every platform, not
+  cryptographic), never public. `rand` default features are off (no ChaCha);
+  `rand_distr` gives `StandardNormal`. Same seed, same draws for the same
+  `rand` and crate versions; not promised across upgrades. No `child(index)`
+  yet: it lands with forests or selection.
+- **Synthetic data** (`src/synthetic.rs` + `synthetic/`, book: `synthetic.md`).
+  `MakeRegression`, `MakeBlobs`, `MakeClassification`: configs with `with_*`,
+  checked by the crate-private `require` (`InvalidParameter`) when drawing.
+  `generate()` returns `*Data` (public `x`, `y` and truth fields) with
+  `dataset()`, which runs the public `validate_finite` scan (fields are
+  public, so no assumed state). `stream()` returns `*Stream`: endless
+  `Iterator<Item = (Array1<f64>, target)>`, `next_batch(n)` and `batches(n)`
+  (panics on 0) return `Samples<T> { x, y }` with `dataset()`; truth getters.
+  One private per-row `fill_row` per generator serves every path; batching
+  never changes the rows. Regression's `generate` is the stream's first
+  `n_samples` rows; the class generators' `generate` fixes class sizes
+  (largest remainder, ties to the lower class) and shuffles, streams draw each
+  class. Noise and flips are drawn even at 0, so a seed's features don't depend
+  on `noise` / `flip_y`. Classification: one corner per class (distinct
+  integers' bits, `n_classes <= 2^min(n_informative, 63)`), columns
+  informative, redundant, repeated, useless, then `flip_y`; no clusters per
+  class, covariance or column shuffling yet.
 - **Errors** (`src/error.rs`, book: `errors.md`). One public enum,
   `PredictError` (`thiserror`, `#[non_exhaustive]`), and the alias `Result<T>`,
   both re-exported at the crate root from a private `error` module. No `Clone` /

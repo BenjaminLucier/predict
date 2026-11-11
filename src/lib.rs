@@ -8,9 +8,12 @@
 pub mod dataset;
 mod error;
 mod float;
+mod seed;
+pub mod synthetic;
 mod traits;
 
 pub use dataset::Dataset;
 pub use error::{PredictError, Result};
 pub use float::Float;
+pub use seed::Seed;
 pub use traits::{Fit, FitTransform, Predict, PredictProbability, Transform, ValidateConfig};

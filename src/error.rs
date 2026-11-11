@@ -127,3 +127,15 @@ pub(crate) fn check_len(context: &'static str, expected: usize, actual: usize) -
         actual,
     })
 }
+
+/// `InvalidParameter` for the setting `name` unless `ok`. `reason` states the
+/// requirement, such as "must be positive".
+pub(crate) fn require(ok: bool, name: &'static str, reason: &str) -> Result<()> {
+    if ok {
+        return Ok(());
+    }
+    Err(PredictError::InvalidParameter {
+        name,
+        reason: reason.to_string(),
+    })
+}

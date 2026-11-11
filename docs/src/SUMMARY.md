@@ -5,6 +5,7 @@
 # User guide
 
 - [Data](data.md)
+- [Synthetic data](synthetic.md)
 
 # Architecture
 

@@ -14,3 +14,10 @@ repository = "https://github.com/benjaminlucier/predict"
 [dependencies]
 ndarray = "0.17.2"
 thiserror = "2"
+# Randomness for generators, splitters and randomised estimators, behind
+# `Seed`; no `rand` type is public. Default features are off to leave out the
+# ChaCha generators, which we don't use; `sys_rng` seeds from the OS.
+rand = { version = "0.10.3", default-features = false, features = ["std", "sys_rng"] }
+# Sampling distributions (the normal distribution) for synthetic data and
+# random initialisation.
+rand_distr = { version = "0.6.0", default-features = false, features = ["std"] }
