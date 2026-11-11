@@ -54,6 +54,16 @@ impl<F: Float> Block<'_, F> {
         }
     }
 
+    /// The same block, borrowing everything it holds.
+    pub(super) fn borrowed(&self) -> Block<'_, F> {
+        match self {
+            Block::DenseRowMajor(x) => Block::DenseRowMajor(x.view().into()),
+            Block::DenseColMajor(x) => Block::DenseColMajor(x.view().into()),
+            Block::Csr(m) => Block::Csr(m.view()),
+            Block::Csc(m) => Block::Csc(m.view()),
+        }
+    }
+
     /// The block, borrowed.
     pub(super) fn view(&self) -> BlockView<'_, F> {
         match self {

@@ -275,6 +275,18 @@ impl<'a, F: Float, L: Layout<'a, F>, S: State, Y: TargetState> Dataset<'a, F, L,
         targets: Y,
         sample_weights: Option<CovariantCowArray<'a, F, Ix1>>,
     ) -> Self {
+        // Only a bug in this crate can break these: `with_y` and
+        // `with_sample_weights` check the rows first, and nothing else changes
+        // them.
+        let n_samples = features.n_rows();
+        debug_assert!(
+            targets.n_rows().is_none_or(|n| n == n_samples),
+            "targets need one row per sample"
+        );
+        debug_assert!(
+            sample_weights.as_ref().is_none_or(|w| w.len() == n_samples),
+            "sample weights need one per sample"
+        );
         Dataset {
             features,
             targets,
@@ -403,6 +415,21 @@ impl<'a, F: Float, O: Orientation, D: Density, S: State, Y: TargetState>
             self.targets,
             self.sample_weights,
         ))
+    }
+
+    /// The same dataset, borrowing everything it holds: features, targets and
+    /// weights. Nothing is copied but a short list of block headers; the
+    /// layout, state and targets keep their types, with this borrow's lifetime.
+    ///
+    /// For handing data on by ownership, as [`Transform`](crate::Transform)
+    /// takes it, while keeping the original: a view's blocks are borrowed, so
+    /// whatever transforms it copies only what it writes.
+    pub fn view(&self) -> Dataset<'_, F, Blocks<'_, F, O, D>, S, Y::Borrowed<'_>> {
+        Dataset::from_parts(
+            self.features.borrowed(),
+            self.targets.borrowed(),
+            self.sample_weights.as_ref().map(|w| w.view().into()),
+        )
     }
 
     /// Every block of features, borrowed, in column order: never copies. A dense

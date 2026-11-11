@@ -130,6 +130,22 @@ at the root.
   (XGBoost); with `Missing`, absent entries are NaN when converted to dense
   and in validation, so the matrix reaches `Finite` only if fully stored.
 
+- **Estimator traits** (`src/traits.rs`, private, re-exported at the root;
+  book: `estimators.md`). An estimator is a config type and a fitted type.
+  `ValidateConfig` (default accepts) checks settings and every `fit` calls it
+  first. `Fit<In>` (config, borrows, `type Fitted`), `Predict<In>` (fitted,
+  borrows, generic over `Y` so it can't read targets), `PredictProbability<In>:
+  Predict<In>` (`type Probabilities`, `n_classes`), `Transform<In>` (takes
+  ownership, keeps rows, targets and weights), `FitTransform<In>: Fit<In,
+  Fitted: Transform<In>>` (default body, explicit empty opt-in impl).
+  `#[diagnostic::on_unimplemented]` on `Fit`, `Predict`, `Transform` names
+  state, targets and layout; it fires only when an estimator has two or more
+  impls (with one, rustc reports a type mismatch). Impls name the input's `L`,
+  `S` and `Y`, one per layout an estimator handles well. `Dataset::view()`
+  borrows everything (targets via `TargetState::Borrowed<'b>`), copying
+  nothing, so a dataset can be transformed and kept. `from_parts`
+  `debug_assert!`s targets and weights have one row per sample. The example
+  estimator (`examples/estimator.rs`, nearest centroid) is not in the library.
 - **Errors** (`src/error.rs`, book: `errors.md`). One public enum,
   `PredictError` (`thiserror`, `#[non_exhaustive]`), and the alias `Result<T>`,
   both re-exported at the crate root from a private `error` module. No `Clone` /

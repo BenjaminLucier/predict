@@ -8,7 +8,9 @@
 pub mod dataset;
 mod error;
 mod float;
+mod traits;
 
 pub use dataset::Dataset;
 pub use error::{PredictError, Result};
 pub use float::Float;
+pub use traits::{Fit, FitTransform, Predict, PredictProbability, Transform, ValidateConfig};

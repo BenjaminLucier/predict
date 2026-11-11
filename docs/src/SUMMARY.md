@@ -8,6 +8,7 @@
 
 # Architecture
 
+- [Estimators](estimators.md)
 - [Errors](errors.md)
 
 # Contributing

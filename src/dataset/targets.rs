@@ -12,7 +12,10 @@ mod sealed {
 
     use crate::Result;
 
-    pub trait Sealed {}
+    pub trait Sealed {
+        /// The number of rows of targets, or `None` without targets.
+        fn n_rows(&self) -> Option<usize>;
+    }
 
     /// The value check behind [`Target`](super::Target). It lives in the private
     /// module so users can't call it; `with_y` is the only way to run it.
@@ -103,7 +106,16 @@ pub(super) fn check<T: Target>(y: ArrayView2<'_, T>) -> Result<()> {
 }
 
 /// Whether a dataset has targets: [`NoTargets`] or [`Targets`], and nothing else.
-pub trait TargetState: sealed::Sealed {}
+pub trait TargetState: sealed::Sealed {
+    /// The same targets, borrowed: what [`Dataset::view`](super::Dataset::view)
+    /// holds.
+    type Borrowed<'b>: TargetState
+    where
+        Self: 'b;
+
+    #[doc(hidden)]
+    fn borrowed(&self) -> Self::Borrowed<'_>;
+}
 
 /// No targets: data for an unsupervised estimator, or data to predict on.
 #[derive(Debug, Clone, Copy)]
@@ -120,8 +132,35 @@ pub struct Targets<'a, T, D: Dimension = Ix1> {
     pub(super) y: CovariantCowArray<'a, T, D>,
 }
 
-impl sealed::Sealed for NoTargets {}
-impl<T, D: Dimension> sealed::Sealed for Targets<'_, T, D> {}
+impl sealed::Sealed for NoTargets {
+    fn n_rows(&self) -> Option<usize> {
+        None
+    }
+}
 
-impl TargetState for NoTargets {}
-impl<T: Target, D: TargetDim> TargetState for Targets<'_, T, D> {}
+impl<T, D: Dimension> sealed::Sealed for Targets<'_, T, D> {
+    fn n_rows(&self) -> Option<usize> {
+        Some(self.y.len_of(Axis(0)))
+    }
+}
+
+impl TargetState for NoTargets {
+    type Borrowed<'b> = NoTargets;
+
+    fn borrowed(&self) -> NoTargets {
+        NoTargets
+    }
+}
+
+impl<T: Target, D: TargetDim> TargetState for Targets<'_, T, D> {
+    type Borrowed<'b>
+        = Targets<'b, T, D>
+    where
+        Self: 'b;
+
+    fn borrowed(&self) -> Targets<'_, T, D> {
+        Targets {
+            y: self.y.view().into(),
+        }
+    }
+}

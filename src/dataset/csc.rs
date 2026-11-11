@@ -82,6 +82,13 @@ impl<'a, F: Float> CscMatrix<'a, F> {
         self
     }
 
+    /// The same matrix, borrowing its arrays: no values are copied.
+    pub fn view(&self) -> CscMatrix<'_, F> {
+        CscMatrix {
+            cols: self.cols.view(),
+        }
+    }
+
     pub fn n_rows(&self) -> usize {
         self.cols.lane_len()
     }

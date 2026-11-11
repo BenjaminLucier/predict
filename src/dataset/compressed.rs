@@ -85,6 +85,17 @@ impl<'a, F: Float> Compressed<'a, F> {
         Ok(matrix)
     }
 
+    /// The same matrix, borrowing its three arrays.
+    pub(super) fn view(&self) -> Compressed<'_, F> {
+        Compressed {
+            lane_len: self.lane_len,
+            offsets: Cow::Borrowed(&self.offsets),
+            indices: Cow::Borrowed(&self.indices),
+            values: Cow::Borrowed(&self.values),
+            absent: self.absent,
+        }
+    }
+
     pub(super) fn n_lanes(&self) -> usize {
         self.offsets.len() - 1
     }

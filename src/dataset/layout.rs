@@ -205,6 +205,15 @@ impl<'a, F: Float, O: Orientation, D: Density> Blocks<'a, F, O, D> {
         self.blocks
     }
 
+    /// The same blocks, each borrowing what it holds: a new list of headers,
+    /// no values copied.
+    pub(super) fn borrowed(&self) -> Blocks<'_, F, O, D> {
+        Blocks {
+            blocks: self.blocks.iter().map(Block::borrowed).collect(),
+            kinds: PhantomData,
+        }
+    }
+
     /// Every block, borrowed, in column order.
     pub(super) fn views(&self) -> impl ExactSizeIterator<Item = BlockView<'_, F>> {
         self.blocks.iter().map(Block::view)
