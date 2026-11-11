@@ -20,6 +20,7 @@ first non-finite value in memory order:
 | `Malformed { context, reason }` | An input's structure is broken in a way no single value or length describes, such as a sparse row's column indices out of order. `reason` says what is wrong and where. |
 | `Conflict { context, reason }` | Two inputs, each valid on its own, can't be combined, such as two sets of sample weights for the same rows. `reason` says what conflicts and how to resolve it. |
 | `ShapeMismatch { context, expected, actual }` | A length or column count is not the one required, such as targets with a different number of rows than the features. |
+| `Undefined { context, reason }` | A quantity has no meaningful value for these inputs, such as `r2_score` on constant targets, or a weighted mean whose weights are all zero. `reason` says why. |
 | `EmptyInput { context }` | An input has no rows or no columns where at least one is required. |
 | `InvalidParameter { name, reason }` | A setting is outside its valid range, or conflicts with the data. |
 
@@ -39,7 +40,8 @@ crosses threads. It does not implement `Clone` or `PartialEq`; compare errors wi
 - an input, by its argument name: `"x"`, `"y"`, `"y_true"`;
 - a transformer, by its type name, from `fit` and `transform` alike:
   `"StandardScaler"`;
-- the method, where neither applies: `"validate_finite"`.
+- the function or method, where neither applies: `"validate_finite"`,
+  `"r2_score"`.
 
 `InvalidParameter`'s `name` is the setting, as in the method that sets it
 (`max_iter` for `with_max_iter`). Its `reason` states the requirement, such as

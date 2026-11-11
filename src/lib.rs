@@ -8,6 +8,7 @@
 pub mod dataset;
 mod error;
 mod float;
+pub mod metrics;
 mod seed;
 pub mod synthetic;
 mod traits;

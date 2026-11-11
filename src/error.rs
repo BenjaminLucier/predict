@@ -73,6 +73,16 @@ pub enum PredictError {
         actual: usize,
     },
 
+    /// A quantity has no meaningful value for these inputs, such as a weighted
+    /// mean whose weights are all zero.
+    ///
+    /// `context` names the function; `reason` says why there is no value.
+    #[error("{context} is undefined: {reason}")]
+    Undefined {
+        context: &'static str,
+        reason: String,
+    },
+
     /// An input has no rows or no columns where at least one is required.
     #[error("{context}: empty input")]
     EmptyInput { context: &'static str },

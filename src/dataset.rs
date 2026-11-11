@@ -552,7 +552,7 @@ impl<'a, F: Float, O: Orientation, D: Density, Y: TargetState>
 
 /// `weights` if there is one per sample and each is finite and non-negative,
 /// checked row by row. `-0.0` is accepted: it compares equal to `0.0`.
-fn checked_weights<F: Float>(
+pub(crate) fn checked_weights<F: Float>(
     n_samples: usize,
     weights: CowArray<'_, F, Ix1>,
 ) -> Result<CowArray<'_, F, Ix1>> {

@@ -178,9 +178,27 @@ at the root.
   raises it. `InvalidValue` covers a value outside its input's range (negative
   weight); `Malformed` a broken structure (unsorted sparse row); `Conflict`
   two valid inputs that can't be combined (weights on both sides of
-  `hstack`). `context` names an input (`"y"`), a transformer (`"StandardScaler"`)
-  or a method (`"validate_finite"`). Settings are checked in `fit`, never in
+  `hstack`); `Undefined` a quantity with no value for the inputs (R² of
+  constant targets, all-zero weights). `context` names an input (`"y"`), a
+  transformer (`"StandardScaler"`) or a function or method
+  (`"validate_finite"`, `"r2_score"`). Settings are checked in `fit`, never in
   `with_*`.
+
+- **Metrics** (`src/metrics.rs`, `src/metrics/`, book: `metrics.md`). Free
+  functions over `ArrayView1` `y_true` / `y_pred`: `mse`, `rmse`, `mae`,
+  `r2_score` (inputs `F: Float`), `accuracy`, `precision`, `recall`,
+  `fbeta_score`, `f1_score` (`usize` classes), each with a `_weighted` form
+  taking `sample_weights` of its own float type `W` (checked like `Dataset`
+  weights, total positive and finite). Inputs are checked first (lengths, empty,
+  finite); every result is `f64`, summed in `f64`. Overflow gives ±infinity,
+  never NaN; `Undefined` for a constant `y_true` in R². Classes are those in
+  `y_true` or `y_pred`; a 0/0 per-class score is 0. `Average`
+  (`#[non_exhaustive]`): `Binary { positive }`, `Macro`, `Micro`, `BySupport`
+  (scikit-learn's `"weighted"`). `ConfusionMatrix` holds `usize` counts; a
+  private `Tally` holds weights. `Metric<T, W>` (open, dyn-compatible:
+  `direction()`, `compute(.., Option<weights>)`) with `Direction`, implemented
+  by `MSE`, `RMSE`, `MAE`, `R2`, `Accuracy`, `Precision`, `Recall`, `F1`,
+  `FBeta`.
 
 ## Conventions
 

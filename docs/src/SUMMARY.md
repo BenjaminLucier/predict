@@ -6,6 +6,7 @@
 
 - [Data](data.md)
 - [Synthetic data](synthetic.md)
+- [Metrics](metrics.md)
 
 # Architecture
 
