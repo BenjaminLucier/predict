@@ -1,7 +1,8 @@
 //! How a dataset stores its features: blocks of adjacent columns, side by side.
 
-use ndarray::{ArrayView2, ArrayViewMut2, Ix2};
+use ndarray::{Array2, ArrayView2, ArrayViewMut2, Ix2, ShapeBuilder};
 
+use super::select::{Selection, select_array};
 use super::{Absent, CovariantCowArray, CscMatrix, CsrMatrix};
 use crate::error::reject_first;
 use crate::{Float, Result};
@@ -61,6 +62,39 @@ impl<F: Float> Block<'_, F> {
             Block::DenseColMajor(x) => Block::DenseColMajor(x.view().into()),
             Block::Csr(m) => Block::Csr(m.view()),
             Block::Csc(m) => Block::Csc(m.view()),
+        }
+    }
+
+    /// The chosen rows of the block, in the order given, as the same kind of
+    /// block: borrowed for a range of rows (except CSC), copied otherwise.
+    pub(super) fn select_rows(&self, selection: &Selection<'_>) -> Block<'_, F> {
+        let rows = selection.rows;
+        match self {
+            Block::DenseRowMajor(x) => Block::DenseRowMajor(match &selection.range {
+                Some(_) => select_array(x.view(), rows, selection.range.clone()),
+                None => {
+                    let mut out = Array2::zeros((rows.len(), x.ncols()));
+                    for (mut row, &old) in out.rows_mut().into_iter().zip(rows) {
+                        row.assign(&x.row(old));
+                    }
+                    out.into()
+                }
+            }),
+            Block::DenseColMajor(x) => Block::DenseColMajor(match &selection.range {
+                Some(_) => select_array(x.view(), rows, selection.range.clone()),
+                None => {
+                    // Column by column, so each column is written contiguously.
+                    let mut out = Array2::zeros((rows.len(), x.ncols()).f());
+                    for (mut column, old_column) in out.columns_mut().into_iter().zip(x.columns()) {
+                        for (value, &old) in column.iter_mut().zip(rows) {
+                            *value = old_column[old];
+                        }
+                    }
+                    out.into()
+                }
+            }),
+            Block::Csr(m) => Block::Csr(m.select_rows(selection)),
+            Block::Csc(m) => Block::Csc(m.select_rows(selection)),
         }
     }
 

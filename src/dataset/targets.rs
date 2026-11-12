@@ -2,7 +2,10 @@
 
 use ndarray::{ArrayView, ArrayView2, Axis, Dimension, Ix1, Ix2};
 
+use std::ops::Range;
+
 use super::CovariantCowArray;
+use super::select::select_array;
 
 use crate::Result;
 use crate::error::reject_first;
@@ -25,7 +28,7 @@ mod sealed {
 
     /// How [`TargetDim`](super::TargetDim) presents targets as rows × outputs, so
     /// one check serves both shapes.
-    pub trait AsOutputMatrix: ndarray::Dimension {
+    pub trait AsOutputMatrix: ndarray::RemoveAxis {
         fn as_output_matrix<T>(y: ArrayView<'_, T, Self>) -> ArrayView2<'_, T>;
     }
 }
@@ -115,6 +118,12 @@ pub trait TargetState: sealed::Sealed {
 
     #[doc(hidden)]
     fn borrowed(&self) -> Self::Borrowed<'_>;
+
+    /// The targets of the chosen rows: borrowed when `range` is `Some` (the
+    /// rows are that range), copied otherwise. Called only by
+    /// `Dataset::select_rows`, after it checked every row.
+    #[doc(hidden)]
+    fn select_rows(&self, rows: &[usize], range: Option<Range<usize>>) -> Self::Borrowed<'_>;
 }
 
 /// No targets: data for an unsupervised estimator, or data to predict on.
@@ -150,6 +159,10 @@ impl TargetState for NoTargets {
     fn borrowed(&self) -> NoTargets {
         NoTargets
     }
+
+    fn select_rows(&self, _rows: &[usize], _range: Option<Range<usize>>) -> NoTargets {
+        NoTargets
+    }
 }
 
 impl<T: Target, D: TargetDim> TargetState for Targets<'_, T, D> {
@@ -161,6 +174,12 @@ impl<T: Target, D: TargetDim> TargetState for Targets<'_, T, D> {
     fn borrowed(&self) -> Targets<'_, T, D> {
         Targets {
             y: self.y.view().into(),
+        }
+    }
+
+    fn select_rows(&self, rows: &[usize], range: Option<Range<usize>>) -> Targets<'_, T, D> {
+        Targets {
+            y: select_array(self.y.view(), rows, range),
         }
     }
 }

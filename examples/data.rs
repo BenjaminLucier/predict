@@ -137,6 +137,24 @@ fn main() -> Result<()> {
     // ANCHOR_END: convert
     println!("as one matrix: {}", view(&dense));
 
+    // ANCHOR: select
+    let x = array![[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]];
+    let y = array![0_usize, 1, 0, 1];
+    let data = Dataset::new(&x).validate_finite()?.with_y(&y)?;
+
+    // An unshuffled split: each side is a range of rows, so both are borrowed.
+    let (train, test) = (data.select_rows(&[0, 1, 2]), data.select_rows(&[3]));
+
+    // Rows in any order, or repeated: copied once.
+    let resampled = data.select_rows(&[3, 0, 0]);
+    // ANCHOR_END: select
+    println!(
+        "{} train rows, {} test rows, resampled classes {}",
+        train.n_samples(),
+        test.n_samples(),
+        resampled.y()
+    );
+
     Ok(())
 }
 

@@ -8,6 +8,7 @@ mod csc;
 mod csr;
 mod dense;
 mod layout;
+mod select;
 mod state;
 mod targets;
 
@@ -26,6 +27,8 @@ pub use layout::{
 };
 pub use state::{Finite, InfinityFree, NoInfinity, State, Unchecked};
 pub use targets::{NoTargets, Target, TargetDim, TargetState, Targets};
+
+use select::{Selection, select_array};
 
 use crate::error::check_len;
 use crate::{Float, PredictError, Result};
@@ -429,6 +432,40 @@ impl<'a, F: Float, O: Orientation, D: Density, S: State, Y: TargetState>
             self.features.borrowed(),
             self.targets.borrowed(),
             self.sample_weights.as_ref().map(|w| w.view().into()),
+        )
+    }
+
+    /// The chosen rows, in the order given, with their targets and weights:
+    /// how a train/test split or a cross-validation fold becomes data. Rows may
+    /// repeat (a bootstrap sample) and be in any order.
+    ///
+    /// Each block keeps its kind, so the layout, state and targets keep their
+    /// types. Rows that form one ascending range (`10..20`, as an unshuffled
+    /// split gives) are **borrowed**, without copying values: dense blocks,
+    /// targets and weights as slices, CSR blocks with only their row offsets
+    /// rebuilt. CSC blocks are always copied, since each column keeps a
+    /// different run of its entries, renumbered. Any other choice of rows is
+    /// copied once.
+    ///
+    /// # Panics
+    ///
+    /// If a row is out of range, as slice indexing does: splitters never make
+    /// one, so it is a bug in the code that chose the rows.
+    pub fn select_rows(
+        &self,
+        rows: &[usize],
+    ) -> Dataset<'_, F, Blocks<'_, F, O, D>, S, Y::Borrowed<'_>> {
+        let n_samples = self.n_samples();
+        if let Some(&row) = rows.iter().find(|&&row| row >= n_samples) {
+            panic!("select_rows: row {row} is out of range for {n_samples} rows");
+        }
+        let selection = Selection::new(rows);
+        Dataset::from_parts(
+            self.features.select_rows(&selection),
+            self.targets.select_rows(rows, selection.range.clone()),
+            self.sample_weights
+                .as_ref()
+                .map(|w| select_array(w.view(), rows, selection.range.clone())),
         )
     }
 

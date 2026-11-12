@@ -7,6 +7,7 @@ use ndarray::Array2;
 
 use super::Absent;
 use super::compressed::{Compressed, Names};
+use super::select::Selection;
 use crate::{Float, PredictError, Result};
 
 const NAMES: Names = Names {
@@ -135,6 +136,14 @@ impl<'a, F: Float> CscMatrix<'a, F> {
                 value: value.into(),
             }),
             None => Ok(()),
+        }
+    }
+
+    /// The chosen rows, in the order given: always a copy (see
+    /// [`Compressed::select_indices`]).
+    pub(super) fn select_rows(&self, selection: &Selection<'_>) -> CscMatrix<'static, F> {
+        CscMatrix {
+            cols: self.cols.select_indices(selection),
         }
     }
 

@@ -6,6 +6,7 @@ use std::borrow::Cow;
 
 use ndarray::Array2;
 
+use super::select::Selection;
 use crate::error::check_len;
 use crate::{Float, PredictError, Result};
 
@@ -83,6 +84,24 @@ impl<'a, F: Float> Compressed<'a, F> {
         };
         matrix.check_structure(names)?;
         Ok(matrix)
+    }
+
+    /// Parts already known to be well formed: those of a matrix that passed
+    /// [`new`](Self::new), selected or rebuilt by this module.
+    fn from_checked(
+        lane_len: usize,
+        offsets: Cow<'a, [usize]>,
+        indices: Cow<'a, [usize]>,
+        values: Cow<'a, [F]>,
+        absent: Absent,
+    ) -> Self {
+        Compressed {
+            lane_len,
+            offsets,
+            indices,
+            values,
+            absent,
+        }
     }
 
     /// The same matrix, borrowing its three arrays.
@@ -170,6 +189,97 @@ impl<'a, F: Float> Compressed<'a, F> {
             }
         }
         Ok(())
+    }
+
+    /// The chosen lanes, in the order given (CSR's rows).
+    ///
+    /// A range of lanes is one run of the indices and values, so those are
+    /// borrowed and only the offsets, one per lane, are rebuilt. Any other
+    /// choice copies each lane's entries, repeats included.
+    pub(super) fn select_lanes(&self, selection: &Selection<'_>) -> Compressed<'_, F> {
+        if let Some(range) = &selection.range {
+            let (start, end) = (self.offsets[range.start], self.offsets[range.end]);
+            let offsets = self.offsets[range.start..=range.end]
+                .iter()
+                .map(|offset| offset - start)
+                .collect::<Vec<_>>();
+            return Compressed::from_checked(
+                self.lane_len,
+                Cow::Owned(offsets),
+                Cow::Borrowed(&self.indices[start..end]),
+                Cow::Borrowed(&self.values[start..end]),
+                self.absent,
+            );
+        }
+        let mut offsets = Vec::with_capacity(selection.rows.len() + 1);
+        offsets.push(0);
+        let (mut indices, mut values) = (Vec::new(), Vec::new());
+        for &lane in selection.rows {
+            let (lane_indices, lane_values) = self.lane(lane);
+            indices.extend_from_slice(lane_indices);
+            values.extend_from_slice(lane_values);
+            offsets.push(indices.len());
+        }
+        Compressed::from_checked(
+            self.lane_len,
+            Cow::Owned(offsets),
+            Cow::Owned(indices),
+            Cow::Owned(values),
+            self.absent,
+        )
+    }
+
+    /// The chosen positions within every lane, renumbered in the order given
+    /// (CSC's rows). Always a copy: each lane keeps a different run of its
+    /// entries, and their indices change.
+    ///
+    /// A position chosen several times gives its entry once for each time, and
+    /// each lane's entries are sorted by their new index unless the positions
+    /// were ascending without repeats, which keeps them in order already.
+    pub(super) fn select_indices(&self, selection: &Selection<'_>) -> Compressed<'static, F> {
+        // Where each old position went: a counting sort of the new positions by
+        // old position, so old position `p`'s new ones are
+        // `new_positions[starts[p]..starts[p + 1]]`.
+        let mut starts = vec![0; self.lane_len + 1];
+        for &old in selection.rows {
+            starts[old + 1] += 1;
+        }
+        for p in 0..self.lane_len {
+            starts[p + 1] += starts[p];
+        }
+        let mut next = starts.clone();
+        let mut new_positions = vec![0; selection.rows.len()];
+        for (new, &old) in selection.rows.iter().enumerate() {
+            new_positions[next[old]] = new;
+            next[old] += 1;
+        }
+
+        let mut offsets = Vec::with_capacity(self.n_lanes() + 1);
+        offsets.push(0);
+        let mut entries: Vec<(usize, F)> = Vec::new();
+        let (mut indices, mut values) = (Vec::new(), Vec::new());
+        for lane in 0..self.n_lanes() {
+            entries.clear();
+            let (lane_indices, lane_values) = self.lane(lane);
+            for (&old, &value) in lane_indices.iter().zip(lane_values) {
+                for &new in &new_positions[starts[old]..starts[old + 1]] {
+                    entries.push((new, value));
+                }
+            }
+            if !selection.increasing {
+                entries.sort_unstable_by_key(|&(new, _)| new);
+            }
+            indices.extend(entries.iter().map(|&(new, _)| new));
+            values.extend(entries.iter().map(|&(_, value)| value));
+            offsets.push(indices.len());
+        }
+        Compressed::from_checked(
+            selection.rows.len(),
+            Cow::Owned(offsets),
+            Cow::Owned(indices),
+            Cow::Owned(values),
+            self.absent,
+        )
     }
 
     /// Every stored entry as `(lane, index, value)`, lane by lane and in index

@@ -8,6 +8,7 @@ use std::marker::PhantomData;
 use ndarray::{CowArray, Ix2};
 
 use super::block::{Block, BlockView};
+use super::select::Selection;
 use super::{Absent, CscMatrix, CsrMatrix};
 use crate::{Float, Result};
 use sealed::Sealed;
@@ -210,6 +211,18 @@ impl<'a, F: Float, O: Orientation, D: Density> Blocks<'a, F, O, D> {
     pub(super) fn borrowed(&self) -> Blocks<'_, F, O, D> {
         Blocks {
             blocks: self.blocks.iter().map(Block::borrowed).collect(),
+            kinds: PhantomData,
+        }
+    }
+
+    /// The chosen rows of every block, each block keeping its kind.
+    pub(super) fn select_rows(&self, selection: &Selection<'_>) -> Blocks<'_, F, O, D> {
+        Blocks {
+            blocks: self
+                .blocks
+                .iter()
+                .map(|block| block.select_rows(selection))
+                .collect(),
             kinds: PhantomData,
         }
     }

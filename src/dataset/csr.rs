@@ -6,6 +6,7 @@ use ndarray::Array2;
 
 use super::Absent;
 use super::compressed::{Compressed, Names};
+use super::select::Selection;
 use crate::{Float, PredictError, Result};
 
 const NAMES: Names = Names {
@@ -137,6 +138,14 @@ impl<'a, F: Float> CsrMatrix<'a, F> {
                 value: value.into(),
             }),
             None => Ok(()),
+        }
+    }
+
+    /// The chosen rows, in the order given: borrowed for a range of rows,
+    /// copied otherwise.
+    pub(super) fn select_rows(&self, selection: &Selection<'_>) -> CsrMatrix<'_, F> {
+        CsrMatrix {
+            rows: self.rows.select_lanes(selection),
         }
     }
 

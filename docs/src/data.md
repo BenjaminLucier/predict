@@ -273,6 +273,42 @@ per document store in under 2 GB.
 To look at every value, convert, with `clone()` first if you want to keep the
 original, and read the result's one block with `blocks()`.
 
+### Selecting rows
+
+`select_rows` takes a list of row numbers and returns those rows, with their
+targets and weights, in the order given. It is how a train/test split or a
+cross-validation fold becomes data. Rows may repeat, as a bootstrap sample
+draws them.
+
+```rust
+{{#rustdoc_include ../../examples/data.rs:select}}
+```
+
+Every block keeps its kind, so the result has the same layout, state and
+targets types as the dataset: a CSC block stays CSC, and selecting rows never
+converts anything. What it costs depends on the rows asked for:
+
+| Rows | Dense blocks, targets, weights | CSR block | CSC block |
+|---|---|---|---|
+| one ascending range, like `10..20` | borrowed | entries borrowed, row offsets rebuilt | copied |
+| anything else | copied | copied | copied |
+
+A range of rows is a slice of each dense array, so it is borrowed without
+copying a value; a column-major slice still has contiguous columns. In CSR, a
+range of rows is one run of the column indices and values, so those are
+borrowed too, and only the row offsets are rebuilt, one per row, to start at
+0. In CSC each column keeps a different run of its entries, and their row
+numbers change, so selecting rows always copies.
+
+Copying CSC rows maps each old row number to the new positions it was chosen
+for, with a counting sort over the chosen rows, then walks every column once,
+writing each stored entry once per new position. When the rows were ascending
+without repeats the new row numbers come out in order; otherwise each column's
+entries are sorted by their new row number, so the matrix stays canonical.
+
+A row number out of range panics, as slice indexing does: it can only come
+from a bug in the code that chose the rows.
+
 ## Sparse features
 
 Many features are mostly zeros: word counts over a vocabulary, or a one-hot

@@ -89,7 +89,14 @@ at the root.
   `S`, targets and weights are kept; to sparse, a value is left out iff
   `absent` stands for it. `with_absent` (only on `Unchecked`) relabels every
   sparse block without copying.
-  The left's targets and weights are kept. `Blocks::append`
+  The left's targets and weights are kept. `select_rows(&[usize])` (private
+  helper `src/dataset/select.rs`) returns the chosen rows, in order, repeats
+  allowed, as `Dataset<'_, F, Blocks<'_, ..>, S, Y::Borrowed<'_>>`: every block
+  keeps its kind; one ascending range is borrowed (dense slices, targets and
+  weights; CSR borrows indices and values, rebuilds offsets), anything else is
+  copied once; CSC always copies (counting sort of chosen rows, per-column
+  sort unless ascending without repeats). Out-of-range rows panic.
+  `TargetState::select_rows` is `#[doc(hidden)]`. `Blocks::append`
   `debug_assert!`s matching rows. Transformers return owned data. The only read
   of the features is `blocks()`: borrowed `BlockView`s (public,
   `#[non_exhaustive]`: `ArrayView2` or `&CsrMatrix` / `&CscMatrix`), never a
