@@ -10,6 +10,7 @@ mod error;
 mod float;
 pub mod metrics;
 mod seed;
+pub mod selection;
 pub mod synthetic;
 mod traits;
 

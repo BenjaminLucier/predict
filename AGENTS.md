@@ -206,6 +206,23 @@ at the root.
   `direction()`, `compute(.., Option<weights>)`) with `Direction`, implemented
   by `MSE`, `RMSE`, `MAE`, `R2`, `Accuracy`, `Precision`, `Recall`, `F1`,
   `FBeta`.
+- **Selection** (`src/selection.rs` + `selection/`, book: `selection.md`).
+  `Splitter { type By<'a>; splits(n_samples, by) -> Result<Vec<Split>> }`;
+  `By` is `()` or `Classes(ArrayView1<usize>)`, so a wrong input doesn't
+  compile. `Split { n_samples, train, test }` (public; both sides ascending
+  in every split made here); `Split::select(&data)` is the only bridge to
+  data, `TrainTest { train, test }` via `select_rows`, panicking on another
+  `n_samples`. No one-call shortcuts. `TrainTestSplit` is a `Splitter` (one
+  split): test side `ceil(test_size * n)`, default 0.25, shuffled (Entropy,
+  `with_seed(u64)`); `without_shuffle` tests on the last rows. `KFold`
+  (consecutive, first `n % k` folds larger) and `StratifiedKFold` (classes
+  dealt to folds in turn, carrying on across classes; a class smaller than
+  `k` is `InvalidParameter { name: "classes" }`) take `with_shuffle(Seed)`,
+  one rng; `n_splits` in `2..=n`. `CrossValidation::new(splitter)
+  .score(&estimator, &data, by, &metric) -> Array1<f64>`: no default
+  splitter, folds fitted in turn and dropped (training side before
+  predicting), test weights passed to the metric, first error wins, bound
+  `for<'b> Fit<Dataset<'b, ..>, Fitted = P>`; `M: Metric<T, F> + ?Sized`.
 
 ## Conventions
 
