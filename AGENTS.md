@@ -223,6 +223,20 @@ at the root.
   splitter, folds fitted in turn and dropped (training side before
   predicting), test weights passed to the metric, first error wins, bound
   `for<'b> Fit<Dataset<'b, ..>, Fitted = P>`; `M: Metric<T, F> + ?Sized`.
+- **Linear** (`src/linear.rs` + `linear/`, book: `linear.md`).
+  `LinearRegressor<P = NoPenalty> { intercept, penalty: P }`: the penalty is a
+  value holding its own settings (no sealed trait yet; each penalty gets its
+  own `Fit` impl). `LinearRegression` = `LinearRegressor<NoPenalty>`, `new()`,
+  `without_intercept()`. `Fit` for `Blocks<'a, F, O, Dense>`, any `O`,
+  `Finite`, `Targets<'a, F>` (sparse doesn't compile); `Predict` the same
+  layout and state, any `Y`, `ShapeMismatch` (`context = "x"`). Fit: weighted
+  means centre (with an intercept), rows scaled by `sqrt(w)` into one faer
+  `Mat` (the working copy), thin SVD, singular values below `max(n, p) * ε *
+  s_max` zeroed: minimum-norm, as scikit-learn. Computes in `F`. `EmptyInput`
+  for no rows, `Undefined` for zero total weight or an SVD that doesn't
+  converge. `FittedLinearRegressor<F>`: `coef()`, `intercept()`. faer
+  (default features off: `std`, `linalg`) is internal: its `RealField` sits
+  on `Float`'s private `Sealed` supertrait.
 
 ## Conventions
 

@@ -8,6 +8,7 @@
 - [Synthetic data](synthetic.md)
 - [Metrics](metrics.md)
 - [Model selection](selection.md)
+- [Linear models](linear.md)
 
 # Architecture
 

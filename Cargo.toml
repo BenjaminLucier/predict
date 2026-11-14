@@ -21,3 +21,7 @@ rand = { version = "0.10.3", default-features = false, features = ["std", "sys_r
 # Sampling distributions (the normal distribution) for synthetic data and
 # random initialisation.
 rand_distr = { version = "0.6.0", default-features = false, features = ["std"] }
+# Dense linear algebra (SVD for least squares), pure Rust and internal: no
+# faer type is public. Default features are off to leave out rayon (no
+# threads yet), sparse solvers, random matrices and .npy files.
+faer = { version = "0.24.4", default-features = false, features = ["std", "linalg"] }

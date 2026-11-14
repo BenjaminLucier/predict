@@ -8,6 +8,7 @@
 pub mod dataset;
 mod error;
 mod float;
+pub mod linear;
 pub mod metrics;
 mod seed;
 pub mod selection;

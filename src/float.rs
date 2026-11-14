@@ -3,7 +3,10 @@
 use ndarray::NdFloat;
 
 mod sealed {
-    pub trait Sealed {}
+    // faer's real-number trait sits on this private supertrait, so generic
+    // code can hand `F` to faer (the least squares SVD) while no faer type or
+    // trait appears in this crate's signatures.
+    pub trait Sealed: faer::traits::RealField {}
 }
 
 /// Implemented by `f32` and `f64`, and nothing else.
