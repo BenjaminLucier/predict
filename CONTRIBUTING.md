@@ -66,6 +66,13 @@ regression` or `docs(book): explain R²`. Mark breaking changes with `!`, as in
 PRs are squash-merged, so the **PR title** becomes the commit message, and CI
 checks that it is a Conventional Commit.
 
+## Releases
+
+[release-plz](https://release-plz.dev/) keeps a release PR open that bumps
+the version and adds the `CHANGELOG.md` entries generated from `feat`, `fix`
+and `perf` commits. Merging it publishes to crates.io through trusted
+publishing (no stored token), tags `vX.Y.Z` and creates the GitHub release.
+
 ## Who decides
 
 This project is maintained by one person, who reviews every change and makes

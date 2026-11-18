@@ -1,0 +1,10 @@
+[workspace]
+changelog_update = true
+# cargo-semver-checks decides the bump from the real API, so a breaking
+# change without `!` is still caught.
+semver_check = true
+# Only feat/fix/perf commits (including `feat!:`) trigger a release PR, so
+# docs, ci and chore changes (even to packaged files like the README) don't.
+release_commits = "^(feat|fix|perf)[(!:]"
+# How long to wait for the published crate to appear in the crates.io index.
+publish_timeout = "10m"
