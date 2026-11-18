@@ -130,11 +130,22 @@ same caller's arrays.
 
 ## Who checks what
 
+Each check runs where its input first appears, so nothing is checked twice
+and an estimator only checks what depends on it.
+
 | Checked | Where | How |
 |---|---|---|
+| dense memory order (each row or column contiguous) | `RowMajorMatrix::new`, `ColMajorMatrix::new`, `Dataset::new` | once, when built |
+| sparse structure (offsets, sorted indices in range) | `CsrMatrix::new`, `CscMatrix::new` | once, when built |
+| blocks side by side (same rows, no weights on the right, one `Absent`) | `hstack` | once, when joined |
 | NaN and infinity | `validate_*` | once, recorded in `S` |
-| targets match rows | `with_y` | once, recorded in `Y` |
-| weights | `with_sample_weights` | once |
+| targets: rows, then outputs, then values (floats finite) | `with_y` | once, recorded in `Y` |
+| weights: length, then each value finite and non-negative | `with_sample_weights` | once |
 | settings | `fit`, via `validate_config` | every fit |
+| at least one row, total weight positive | `fit` | every fit |
 | layout and state accepted | compiler | trait impls |
 | number of features | `predict`, `transform` | every call |
+
+The total weight is left to `fit` because it depends on the rows used: a
+training fold can hold only zero-weight rows even when the whole dataset
+doesn't.
