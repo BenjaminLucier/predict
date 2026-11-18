@@ -1,0 +1,74 @@
+name: Release
+
+# release-plz on every push to main: `release-pr` opens
+# or updates the release PR, and merging it lets `release` publish the crate
+# when its version isn't on crates.io yet, tag it (`v{version}`) and create the
+# GitHub release.
+# The crate's trusted publisher on crates.io names this file and the
+# `release` environment, which only deploys from main.
+
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  # Opens or updates a "release" PR with version bumps and changelog entries.
+  # Uses RELEASE_TOKEN (a fine-grained PAT or GitHub App token) instead of
+  # GITHUB_TOKEN so that CI runs on the PR it opens.
+  release-pr:
+    name: Release PR
+    runs-on: ubuntu-latest
+    if: github.repository_owner == 'BenjaminLucier'
+    permissions:
+      contents: write
+      pull-requests: write
+    concurrency:
+      group: release-plz-pr-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+      - uses: release-plz/action@66b324fd6c72d05d2a08568492ecdd62bfb8a62b # v0.5.148
+        with:
+          command: release-pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+
+  # Publishes the crate when its version isn't on crates.io yet, tags it
+  # (`v{version}`) and creates the GitHub release. Uses crates.io
+  # trusted publishing: no long-lived registry token is stored.
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    if: github.repository_owner == 'BenjaminLucier'
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+      pull-requests: read
+    concurrency:
+      group: release-plz-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+      - uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1
+        id: auth
+      - uses: release-plz/action@66b324fd6c72d05d2a08568492ecdd62bfb8a62b # v0.5.148
+        with:
+          command: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
