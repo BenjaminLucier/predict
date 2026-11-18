@@ -5,13 +5,13 @@ edition = "2024"
 # Let chains (1.88). The MSRV job checks it; raised only in a minor release.
 rust-version = "1.88"
 authors = ["Benjamin Lucier <benjaminlucier@gmail.com>"]
-description = "Machine learning for Rust with a consistent, scikit-learn-style API (work in progress)."
+description = "Machine learning for Rust with a consistent, scikit-learn-style API."
 readme = "README.md"
 license = "MIT OR Apache-2.0"
 keywords = ["machine-learning", "ml", "sklearn", "statistics", "prediction"]
 categories = ["science", "algorithms"]
 homepage = "https://predict.rs"
-repository = "https://github.com/benjaminlucier/predict"
+repository = "https://github.com/BenjaminLucier/predict"
 # The book and CI stay in the repository; the package is the library, its
 # tests and examples, the README and the licences.
 exclude = ["/docs", "/.github"]
