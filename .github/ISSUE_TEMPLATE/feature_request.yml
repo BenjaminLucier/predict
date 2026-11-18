@@ -1,0 +1,21 @@
+name: Feature request
+description: Propose new behaviour or an API change
+labels: [enhancement]
+body:
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use case
+      description: What are you trying to do, and what is missing today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: How you imagine it working. Optional.
+  - type: input
+    id: scikit-learn
+    attributes:
+      label: scikit-learn equivalent
+      description: The scikit-learn class or function this matches, if any. Optional.
