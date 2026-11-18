@@ -2,7 +2,7 @@
 
 ## Setup
 
-You need a stable Rust toolchain (edition 2024) and, for this book,
+You need Rust 1.88 or newer (edition 2024) and, for this book,
 [mdBook](https://rust-lang.github.io/mdBook/) with its Mermaid plugin for
 diagrams and its KaTeX plugin for maths:
 
