@@ -240,7 +240,8 @@ at the root.
 
 ## Conventions
 
-- Rust edition 2024. Adding a dependency needs the developer's agreement.
+- Rust edition 2024, minimum Rust 1.88 (`rust-version`, checked by CI's MSRV
+  job). Adding a dependency needs the developer's agreement.
 - Explicit names: trait names say what they do and for which setting.
 - Short idiomatic method names: `fit`, `predict`, `transform`.
 - `x` / `y` in code, "targets" in prose. "Classes" for class indices, never
