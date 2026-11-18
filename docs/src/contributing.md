@@ -26,9 +26,13 @@ mdbook build docs
 
 `mdbook serve docs --open` gives a live-reloading preview of the book.
 
-## Commits
+## Pull requests
 
-Each commit is one idea, compiles and passes the checks on its own, and updates
-the book whenever it changes behaviour, naming or architecture. Subjects are
-imperative, under 72 characters, and prefixed with the area they touch, for
-example `dataset: add Dataset`.
+Every change lands through a pull request, squash-merged into one commit on
+`main`. Each is one idea, compiles and passes the checks on its own, and
+updates the book whenever it changes behaviour, naming or architecture.
+
+The PR title becomes the commit subject, so it's a [Conventional
+Commit](https://www.conventionalcommits.org/) scoped by the area it touches,
+for example `feat(dataset): add Dataset` or `docs(book): explain R²`. The
+description becomes the commit body: say why, then what.

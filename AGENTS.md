@@ -37,13 +37,20 @@ written it from scratch. Speed of producing code is not the goal.
 
 ## Git
 
-- Commits on `main` are small, each one idea, and each compiles and passes the
-  checks below on its own.
-- Commit or push only when the developer explicitly approves that change. An
-  approval covers that one commit, not the next.
-- Never force-push `main` or rewrite pushed history. If CI breaks, fix forward.
-- Message: imperative subject under 72 characters, prefixed with the area
-  (`dataset: add Dataset`), and a body saying what and why.
+- Every change reaches `main` through a pull request, squash-merged, so each
+  PR is one commit on `main`: small, one idea, compiling and passing the
+  checks below on its own. Work on a branch, never on `main`.
+- Commit, push or open a PR only when the developer explicitly approves that
+  change. An approval covers that one change, not the next. The developer
+  merges.
+- The PR title is the commit subject and the PR description its body, so
+  write both as the commit: a [Conventional
+  Commit](https://www.conventionalcommits.org/) title under 72 characters,
+  scoped by area (`feat(linear): add ridge regression`, `fix(dataset): ...`,
+  `docs(book): ...`, `ci: ...`, `chore: ...`; `!` for a breaking change), and
+  a description saying why, then what. Only `feat`, `fix` and `perf` cut a
+  release.
+- Never force-push `main` or rewrite its history. If CI breaks, fix forward.
 
 ## Architecture
 
