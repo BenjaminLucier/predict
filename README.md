@@ -2,8 +2,60 @@
 
 Machine learning for Rust with a consistent, scikit-learn-style API.
 
-> **Status:** early development. The current release (`0.0.x`) reserves the
-> crate name and contains no functionality yet. Expect breaking changes.
+[Book](https://predict.rs) · [API docs](https://docs.rs/predict) ·
+[Contributing](CONTRIBUTING.md)
+
+> **Status:** early development, `0.0.x`. Every release may break the API.
+
+## What's here
+
+- **Datasets** that carry their checks in the type: dense (row- or
+  column-major) and sparse (CSR, CSC) features, side by side, with targets and
+  sample weights, validated once and borrowed rather than copied.
+- **Synthetic data:** regression, blobs and classification generators, as
+  whole datasets or endless streams.
+- **Metrics:** MSE, RMSE, MAE and R²; accuracy, precision, recall and F-scores,
+  all with sample weights.
+- **Model selection:** train/test splits, k-fold and stratified k-fold, and
+  cross-validation.
+- **Linear regression:** ordinary least squares, solved by SVD, matching
+  scikit-learn's results.
+
+## Example
+
+```rust
+use predict::linear::LinearRegression;
+use predict::metrics::R2;
+use predict::selection::{CrossValidation, KFold};
+use predict::synthetic::MakeRegression;
+use predict::{Fit, Result, Seed};
+
+fn main() -> Result<()> {
+    let generated = MakeRegression::new()
+        .with_n_samples(200)
+        .with_n_features(3)
+        .with_n_informative(3)
+        .with_noise(0.5)
+        .with_seed(0)
+        .generate()?;
+    let data = generated.dataset()?;
+
+    let model = LinearRegression::new().fit(&data)?;
+    println!("fitted coefficients: {:.3}", model.coef());
+
+    let cv = CrossValidation::new(KFold::new().with_shuffle(Seed::Fixed(42)));
+    let scores = cv.score(&LinearRegression::new(), &data, (), &R2)?;
+    println!("R² per fold: {scores:.4}");
+    Ok(())
+}
+```
+
+The same code is in [`examples/linear.rs`](examples/linear.rs):
+`cargo run --example linear`.
+
+## Minimum Rust version
+
+Rust 1.88. Raising it is a minor-version change.
 
 ## License
 

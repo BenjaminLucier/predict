@@ -2,8 +2,13 @@
 //!
 //! Machine learning for Rust with a consistent, scikit-learn-style API.
 //!
-//! **This crate is a work in progress.** This early release reserves the
-//! crate name; the real API is under development and will change soon.
+//! **Early development:** every `0.0.x` release may break the API.
+//!
+//! Today it has [datasets](dataset) with dense and sparse features, targets
+//! and sample weights; [synthetic data](synthetic); [metrics]; [model
+//! selection](selection) (splits and cross-validation); and [linear
+//! regression](linear). The book at <https://predict.rs> explains the design
+//! and the maths.
 
 pub mod dataset;
 mod error;
