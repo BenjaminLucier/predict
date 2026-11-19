@@ -7,8 +7,9 @@ Machine learning for Rust with a consistent, scikit-learn-style API.
 
 > **Status:** early development, `0.0.x`. Every release may break the API.
 
-**Polars to production.** predict aims to cover the whole path from a
-dataframe to a model running in production, in Rust, for the algorithms
+**Polars to production.** predict picks up where a dataframe library such as
+Polars hands off, at plain `ndarray` arrays, and aims to cover everything from
+there to a model running in production, in Rust, for the algorithms
 practitioners actually reach for.
 
 ## What predict aims for
