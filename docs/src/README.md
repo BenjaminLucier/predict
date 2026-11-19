@@ -3,9 +3,10 @@
 This crate is machine learning for Rust with a consistent, scikit-learn-style
 API.
 
-**Polars to production.** It aims to cover the whole path from a dataframe to
-a model running in production, in Rust, for the algorithms practitioners
-actually reach for. Five things guide it:
+**Polars to production.** It picks up where a dataframe library such as
+Polars hands off, at plain `ndarray` arrays, and aims to cover everything from
+there to a model running in production, in Rust, for the algorithms
+practitioners actually reach for. Five things guide it:
 
 - **Speed:** traditional ML as fast as a single machine allows.
 - **Correctness:** results checked against scikit-learn, every input
