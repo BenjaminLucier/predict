@@ -7,6 +7,26 @@ Machine learning for Rust with a consistent, scikit-learn-style API.
 
 > **Status:** early development, `0.0.x`. Every release may break the API.
 
+**Polars to production.** predict aims to cover the whole path from a
+dataframe to a model running in production, in Rust, for the algorithms
+practitioners actually reach for.
+
+## What predict aims for
+
+- **Speed:** traditional ML as fast as a single machine allows.
+- **Correctness:** results checked against scikit-learn, every input
+  validated, and errors instead of silent NaN.
+- **Type safety:** a dataset's checks are part of its type, so fitting
+  unvalidated data, or sparse data to a dense-only model, doesn't compile.
+- **Rust-native:** pure Rust, with no Python runtime and no C or BLAS
+  libraries to install.
+- **Batteries included:** the pieces around a model ship with it, from
+  splitting and cross-validation to metrics.
+
+It is selective on purpose. An algorithm is included because people use it
+in practice, not because it exists in the literature, and each one is done
+properly rather than added for the count.
+
 ## What's here
 
 - **Datasets** that carry their checks in the type: dense (row- or
