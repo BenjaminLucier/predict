@@ -234,12 +234,19 @@ at the root.
   `LinearRegressor<P = NoPenalty> { intercept, penalty: P }`: the penalty is a
   value holding its own settings (no sealed trait yet; each penalty gets its
   own `Fit` impl). `LinearRegression` = `LinearRegressor<NoPenalty>`, `new()`,
-  `without_intercept()`. `Fit` for `Blocks<'a, F, O, Dense>`, any `O`,
+  `without_intercept()`. `RidgeRegression` = `LinearRegressor<Ridge>`,
+  `new()` (alpha 1, as scikit-learn), `with_alpha(f64)`, `alpha()`;
+  `validate_config` wants `alpha` finite and `>= 0`, `fit` also that it is
+  finite in `F` (`InvalidParameter { name: "alpha" }`). Both fits share one
+  private `least_squares(data, intercept, alpha)`, `alpha = 0` without a
+  penalty; the intercept is never penalised. `Fit` for `Blocks<'a, F, O, Dense>`, any `O`,
   `Finite`, `Targets<'a, F>` (sparse doesn't compile); `Predict` the same
   layout and state, any `Y`, `ShapeMismatch` (`context = "x"`). Fit: weighted
   means centre (with an intercept), rows scaled by `sqrt(w)` into one faer
   `Mat` (the working copy), thin SVD, singular values below `max(n, p) * ε *
-  s_max` zeroed: minimum-norm, as scikit-learn. Computes in `F`. `EmptyInput`
+  s_max` zeroed: minimum-norm, as scikit-learn. Each kept `s` contributes
+  `1 / (s + alpha / s)`, exactly `1 / s` at `alpha = 0`; one solver, no
+  `with_solver` yet. Computes in `F`. `EmptyInput`
   for no rows, `Undefined` for zero total weight or an SVD that doesn't
   converge. `FittedLinearRegressor<F>`: `coef()`, `intercept()`. faer
   (default features off: `std`, `linalg`) is internal: its `RealField` sits
