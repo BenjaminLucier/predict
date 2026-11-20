@@ -39,8 +39,8 @@ properly rather than added for the count.
   all with sample weights.
 - **Model selection:** train/test splits, k-fold and stratified k-fold, and
   cross-validation.
-- **Linear regression:** ordinary least squares, solved by SVD, matching
-  scikit-learn's results.
+- **Linear regression:** ordinary least squares and ridge regression, solved
+  by SVD, matching scikit-learn's results.
 
 ## Example
 
