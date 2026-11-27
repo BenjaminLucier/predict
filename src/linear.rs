@@ -8,4 +8,6 @@
 
 mod regression;
 
-pub use regression::{FittedLinearRegressor, LinearRegression, LinearRegressor, NoPenalty};
+pub use regression::{
+    FittedLinearRegressor, LinearRegression, LinearRegressor, NoPenalty, Ridge, RidgeRegression,
+};

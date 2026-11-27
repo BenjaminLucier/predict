@@ -1,11 +1,13 @@
 //! Ordinary least squares: recover known coefficients, then cross-validate.
+//! Ridge regression: stable coefficients on nearly collinear columns.
 //! Run with `cargo run --example linear`.
 
-use predict::linear::LinearRegression;
+use ndarray::{Array1, Array2};
+use predict::linear::{LinearRegression, RidgeRegression};
 use predict::metrics::R2;
 use predict::selection::{CrossValidation, KFold};
 use predict::synthetic::MakeRegression;
-use predict::{Fit, Result, Seed};
+use predict::{Dataset, Fit, Result, Seed};
 
 fn main() -> Result<()> {
     // ANCHOR: fit
@@ -34,5 +36,24 @@ fn main() -> Result<()> {
     let scores = cv.score(&LinearRegression::new(), &data, (), &R2)?;
     println!("R² per fold: {scores:.4}");
     // ANCHOR_END: cross_validation
+
+    // ANCHOR: ridge
+    // Two columns that are almost the same measurement, and a target that is
+    // their sum plus noise.
+    let n = 50;
+    let first = Array1::from_shape_fn(n, |i| i as f64 / 10.0);
+    let second = Array1::from_shape_fn(n, |i| i as f64 / 10.0 + 0.001 * (7.3 * i as f64).sin());
+    let noise = Array1::from_shape_fn(n, |i| 0.5 * (1.7 * i as f64).cos());
+    let y = &first + &second + noise;
+    let mut x = Array2::zeros((n, 2));
+    x.column_mut(0).assign(&first);
+    x.column_mut(1).assign(&second);
+    let data = Dataset::new(&x).validate_finite()?.with_y(&y)?;
+
+    let ols = LinearRegression::new().fit(&data)?;
+    let ridge = RidgeRegression::new().with_alpha(1.0).fit(&data)?;
+    println!("least squares coefficients: {:.3}", ols.coef());
+    println!("ridge coefficients:         {:.3}", ridge.coef());
+    // ANCHOR_END: ridge
     Ok(())
 }

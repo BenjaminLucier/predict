@@ -1,6 +1,6 @@
 use ndarray::{Array1, Array2, ArrayView1, ShapeBuilder, array, s};
 use predict::dataset::{ColMajorMatrix, DenseRowMajor, Finite, Targets};
-use predict::linear::{FittedLinearRegressor, LinearRegression};
+use predict::linear::{FittedLinearRegressor, LinearRegression, RidgeRegression};
 use predict::metrics::R2;
 use predict::selection::{CrossValidation, KFold};
 use predict::synthetic::MakeRegression;
@@ -263,6 +263,143 @@ fn predict_checks_the_number_of_features() {
             expected: 2,
             actual: 1
         })
+    ));
+}
+
+// --- Ridge -------------------------------------------------------------------
+
+fn ridge(alpha: f64, data: &Data<'_>) -> FittedLinearRegressor {
+    RidgeRegression::new().with_alpha(alpha).fit(data).unwrap()
+}
+
+// Expected values from scikit-learn 1.9 `Ridge(solver="svd")` on the same inputs
+// (git-ignored `reference/python/ridge.py`).
+
+#[test]
+fn ridge_matches_scikit_learn() {
+    let (x, y) = six_rows();
+    let w = array![1.0, 2.0, 0.5, 3.0, 1.0, 0.0];
+    let cases = [
+        (
+            ridge(1.0, &data(&x, &y)),
+            [0.83107296137339, 1.1453218884120173],
+            0.12506437768240541,
+        ),
+        (
+            ridge(100.0, &data(&x, &y)),
+            [0.2456974266513686, 0.3019095230290116],
+            5.266390755613834,
+        ),
+        (
+            ridge(1.0, &data(&x, &y).with_sample_weights(&w).unwrap()),
+            [0.7923137564052026, 1.1630271974773359],
+            0.15920378399684587,
+        ),
+        (
+            RidgeRegression::new()
+                .without_intercept()
+                .fit(&data(&x, &y))
+                .unwrap(),
+            [0.8507418397626105, 1.1541048466864494],
+            0.0,
+        ),
+    ];
+    for (model, coef, intercept) in cases {
+        assert_close(model.coef(), &coef, 1e-12);
+        assert!((model.intercept() - intercept).abs() < 1e-12);
+    }
+}
+
+#[test]
+fn ridge_splits_a_duplicated_column_evenly() {
+    let x = array![[1.0, 1.0], [2.0, 2.0], [3.0, 3.0], [5.0, 5.0]];
+    let y = array![1.0, 2.5, 2.9, 5.2];
+    let model = ridge(1.0, &data(&x, &y));
+    assert_close(
+        model.coef(),
+        &[0.47567567567567576, 0.4756756756756759],
+        1e-12,
+    );
+    assert!((model.intercept() - 0.2837837837837833).abs() < 1e-12);
+}
+
+#[test]
+fn ridge_fits_more_features_than_rows() {
+    let x = array![[1.0, 2.0, 3.0], [4.0, 0.0, 1.0]];
+    let y = array![1.0, 2.0];
+    let model = RidgeRegression::new()
+        .without_intercept()
+        .fit(&data(&x, &y))
+        .unwrap();
+    assert_close(
+        model.coef(),
+        &[0.43438914027149345, 0.036199095022624514, 0.158371040723982],
+        1e-12,
+    );
+}
+
+#[test]
+fn ridge_with_alpha_zero_is_least_squares_exactly() {
+    let (x, y) = six_rows();
+    let (ols, ridge) = (fit(&data(&x, &y)), ridge(0.0, &data(&x, &y)));
+    assert_eq!(ridge.coef(), ols.coef());
+    assert_eq!(ridge.intercept(), ols.intercept());
+}
+
+#[test]
+fn a_larger_alpha_shrinks_the_coefficients() {
+    let (x, y) = six_rows();
+    let norms: Vec<f64> = [0.0, 0.1, 1.0, 10.0, 100.0]
+        .map(|alpha| {
+            let coef = ridge(alpha, &data(&x, &y)).coef().to_owned();
+            coef.dot(&coef)
+        })
+        .to_vec();
+    assert!(norms.windows(2).all(|pair| pair[1] < pair[0]), "{norms:?}");
+}
+
+#[test]
+fn ridge_never_penalises_the_intercept() {
+    // With a huge alpha every coefficient is all but 0, and the intercept is
+    // still the mean target, not shrunk towards 0.
+    let (x, y) = six_rows();
+    let model = ridge(1e12, &data(&x, &y));
+    assert!(
+        model.coef().iter().all(|c| c.abs() < 1e-9),
+        "{}",
+        model.coef()
+    );
+    assert!((model.intercept() - y.mean().unwrap()).abs() < 1e-9);
+}
+
+#[test]
+fn alpha_must_be_finite_and_non_negative() {
+    let (x, y) = six_rows();
+    for alpha in [-1.0, f64::NAN, f64::INFINITY] {
+        let result = RidgeRegression::new().with_alpha(alpha).fit(&data(&x, &y));
+        assert!(
+            matches!(
+                result,
+                Err(PredictError::InvalidParameter { name: "alpha", .. })
+            ),
+            "{alpha}"
+        );
+    }
+}
+
+#[test]
+fn alpha_must_fit_the_data_float_type() {
+    let x = array![[1.0_f32, 0.0], [0.0, 1.0], [2.0, 2.0]];
+    let y = array![1.0_f32, 2.0, 3.0];
+    let data = Dataset::new(&x)
+        .validate_finite()
+        .unwrap()
+        .with_y(&y)
+        .unwrap();
+    let result = RidgeRegression::new().with_alpha(1e300).fit(&data);
+    assert!(matches!(
+        result,
+        Err(PredictError::InvalidParameter { name: "alpha", .. })
     ));
 }
 
